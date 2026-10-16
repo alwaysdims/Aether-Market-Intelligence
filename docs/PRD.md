@@ -189,4 +189,9 @@ Pengguna utama sistem adalah Pengembang/Operator Kuantitatif Tunggal yang mengop
   * Idempotensi & Anti-Spam: deduplikasi hash per run, mutex lock, cooldown error alert 6 jam, dan pelacakan status log.
   * AI Quality Control: pemisahan metrik AI valid vs fallback, batas eksplisit pergerakan (+0.5% / -0.5%), dan proteksi immutability prediksi.
   * End-to-End Test Suite: 33 feature tests Laravel, 6 unit test adapter, dan 64 unit test engine quant lama (100% lulus).
-- **Fase 5 (Mendatang):** Evaluasi performa out-of-sample forward paper trading EXP-04 setelah akumulasi 30 transaksi tertutup di bursa riil.
+- **Fase 5 (Selesai):**
+  * Perintah Audit & Monitoring Operasional (`php artisan hermes:monitor`): pelaporan status waktu nyata 6 pilar operasional.
+  * Audit Konsistensi: deduplikasi Telegram 18 jam berbasis hash isi, penanganan revisi berkode `[PEMBARUAN / REVISI]`, serta catch-up reboot.
+  * Audit Out-of-Sample EXP-04 vs EXP-01: verifikasi manifest beku (`3f5d2ecd...`), isolasi kas Rp500.000,00 riil, dan pemisahan sampel forward.
+  * Test Suite Ekspansi: 44 feature tests Laravel (139 assertions), 6 unit test adapter, dan 64 unit test engine quant (100% lulus).
+- **Fase 6 (Mendatang):** Akumulasi transaksi forward bursa aktif dan audit statistik lanjutan setelah 30 posisi tertutup dicapai.

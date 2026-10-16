@@ -134,20 +134,46 @@ class TelegramNotificationService
         try {
             $analysis = $analysis ?? $run->marketAnalysis;
             $payloadText = $this->formatEodMessage($run, $analysis);
-            $messageHash = sha1("EOD_REPORT_{$run->run_id}_" . sha1($payloadText));
+            $contentHash = sha1($payloadText);
+            $messageHash = sha1("EOD_CONTENT_" . $contentHash);
 
-            // Check if already sent
-            $existingLog = NotificationLog::where('channel', 'telegram')
+            // 1. Check if identical content was already sent recently (within 18 hours)
+            $identicalLog = NotificationLog::where('channel', 'telegram')
+                ->where('message_hash', $messageHash)
+                ->where('status', 'sent')
+                ->where('created_at', '>=', now()->subHours(18))
+                ->first();
+
+            if ($identicalLog && !$force) {
+                return [
+                    'status' => 'skipped_duplicate',
+                    'message' => "Laporan EOD identik untuk sesi pasar ini sudah pernah terkirim pada {$identicalLog->sent_at}.",
+                    'log_id' => $identicalLog->id,
+                ];
+            }
+
+            // 2. Check if a report for this specific run ID was already sent
+            $existingRunLog = NotificationLog::where('channel', 'telegram')
                 ->where('analysis_run_id', $run->id)
                 ->where('status', 'sent')
                 ->first();
 
-            if ($existingLog && !$force) {
+            if ($existingRunLog && !$force) {
                 return [
                     'status' => 'skipped_duplicate',
-                    'message' => "Laporan EOD untuk run {$run->run_id} sudah pernah terkirim pada {$existingLog->sent_at}.",
-                    'log_id' => $existingLog->id,
+                    'message' => "Laporan EOD untuk run {$run->run_id} sudah pernah terkirim pada {$existingRunLog->sent_at}.",
+                    'log_id' => $existingRunLog->id,
                 ];
+            }
+
+            // 3. If content has changed and prior message was sent today, label as UPDATE
+            $priorSentToday = NotificationLog::where('channel', 'telegram')
+                ->where('status', 'sent')
+                ->whereDate('created_at', today())
+                ->exists();
+
+            if ($priorSentToday && ($force || !$identicalLog)) {
+                $payloadText = "🔄 [PEMBARUAN / REVISI LAPORAN]\n" . $payloadText;
             }
 
             // Create pending log

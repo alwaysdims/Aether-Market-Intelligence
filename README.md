@@ -23,6 +23,8 @@ Platform intelijen pasar modal Indonesia (Bursa Efek Indonesia / BEI) berbasis i
 | **Post-Horizon Evaluator (+5D)**| `Implemented` | Pelacakan dan evaluasi akurasi prediksi AI terhadap return 5 hari bursa berikutnya. |
 | **Windows Scheduler Automation**| `Implemented` | Task Scheduler & batch script otomatisasi pada 16:05 WIB dengan proteksi mutex. |
 | **Telegram Bridge Idempotency**| `Implemented` | Notifikasi ringkasan pasar dari Laravel memanfaatkan Hermes CLI sender dengan proteksi deduplikasi, mutex lock, dan cooldown. |
+| **Operational Daily Monitor**  | `Implemented` | Perintah CLI `php artisan hermes:monitor` untuk audit 6 pilar operasional waktu nyata. |
+| **Out-of-Sample EXP-04 Audit**  | `Implemented` | Audit terverifikasi portofolio beku EXP-01 vs EXP-04 (SHA256: `3f5d2ecd...`), isolasi kas Rp500.000 riil. |
 
 ---
 
@@ -183,7 +185,14 @@ Untuk menjalankan feature test Laravel:
 cd E:/Project-bot/laravel-app
 php artisan test
 ```
-*Status Terkini: 8 tests passing (30 assertions).*
+*Status Terkini: 44 tests passing (139 assertions).*
+
+Untuk menjalankan test suite adapter Python:
+```bash
+cd E:/Project-bot/services
+python test_hermes_adapter.py
+```
+*Status Terkini: 6 unit tests passing.*
 
 Untuk menjalankan test suite kuantitatif pada Hermes Stock Agent:
 ```bash
@@ -192,7 +201,14 @@ python -m pytest tests/
 ```
 *Status Terkini: 64 master tests passing.*
 
-### C. Memeriksa Status Kesehatan Sistem
+### C. Audit & Monitoring Operasional Real-Time
+Jalankan perintah audit komprehensif 6 pilar operasional:
+```bash
+cd E:/Project-bot/laravel-app
+php artisan hermes:monitor
+```
+
+### D. Memeriksa Status Kesehatan Sistem
 Periksa via HTTP endpoint:
 ```bash
 curl http://localhost:8000/api/health
