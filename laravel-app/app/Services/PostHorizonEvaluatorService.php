@@ -160,11 +160,11 @@ class PostHorizonEvaluatorService
             $refPrice = (float) $eval->reference_price;
             $actualPrice = (float) $actualSnap->close_price;
 
-            if ($refPrice <= 0) {
+            if ($refPrice <= 0 || $actualPrice <= 0) {
                 $eval->update([
                     'status' => 'cannot_evaluate',
                     'outcome' => 'missing_data',
-                    'rubric_notes' => 'Harga referensi tidak valid (<= 0).',
+                    'rubric_notes' => 'Harga referensi atau harga aktual tidak valid (<= 0).',
                     'evaluated_at' => now(),
                 ]);
                 $missingDataCount++;
