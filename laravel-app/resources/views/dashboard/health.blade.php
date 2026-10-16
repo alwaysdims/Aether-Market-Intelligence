@@ -13,58 +13,72 @@
     </div>
 
     <!-- Active Component Status Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <!-- PostgreSQL Health -->
-        <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-2">
             <div class="flex items-center justify-between">
-                <span class="text-sm font-bold text-white flex items-center space-x-2">
+                <span class="text-xs font-bold text-white flex items-center space-x-1.5">
                     <span>🐘</span>
-                    <span>PostgreSQL Database</span>
+                    <span>PostgreSQL</span>
                 </span>
-                <span class="px-2 py-0.5 rounded text-xs font-bold {{ ($health['database']['status'] ?? '') === 'healthy' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400' }}">
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold {{ ($health['database']['status'] ?? '') === 'healthy' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400' }}">
                     {{ strtoupper($health['database']['status'] ?? 'UNKNOWN') }}
                 </span>
             </div>
-            <div class="text-xs text-slate-400 space-y-1 font-mono">
+            <div class="text-[11px] text-slate-400 font-mono">
                 <p>Latensi: <span class="text-white font-bold">{{ $health['database']['latency_ms'] ?? 0 }} ms</span></p>
-                <p>Database: {{ $health['database']['details']['database'] ?? 'project-bot' }}</p>
-                <p>Host: 127.0.0.1:5432</p>
+                <p>Port: 5432</p>
             </div>
         </div>
 
         <!-- AI Router Health -->
-        <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-2">
             <div class="flex items-center justify-between">
-                <span class="text-sm font-bold text-white flex items-center space-x-2">
+                <span class="text-xs font-bold text-white flex items-center space-x-1.5">
                     <span>🤖</span>
-                    <span>Gemini 3.8 Flash High</span>
+                    <span>Gemini 3.8</span>
                 </span>
-                <span class="px-2 py-0.5 rounded text-xs font-bold {{ ($health['ai_model']['status'] ?? '') === 'healthy' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400' }}">
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold {{ ($health['ai_model']['status'] ?? '') === 'healthy' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400' }}">
                     {{ strtoupper($health['ai_model']['status'] ?? 'UNKNOWN') }}
                 </span>
             </div>
-            <div class="text-xs text-slate-400 space-y-1 font-mono">
+            <div class="text-[11px] text-slate-400 font-mono">
                 <p>Latensi: <span class="text-white font-bold">{{ $health['ai_model']['latency_ms'] ?? 0 }} ms</span></p>
-                <p>Endpoint: 127.0.0.1:20128</p>
-                <p>Model ID: ag/gemini-3.8-flash-high</p>
+                <p>Port: 20128</p>
             </div>
         </div>
 
         <!-- Hermes Engine Health -->
-        <div class="bg-slate-800 border border-slate-700 rounded-xl p-5 space-y-3">
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-2">
             <div class="flex items-center justify-between">
-                <span class="text-sm font-bold text-white flex items-center space-x-2">
+                <span class="text-xs font-bold text-white flex items-center space-x-1.5">
                     <span>📈</span>
-                    <span>Hermes Stock Agent</span>
+                    <span>Hermes Engine</span>
                 </span>
-                <span class="px-2 py-0.5 rounded text-xs font-bold {{ ($health['hermes_agent']['status'] ?? '') === 'healthy' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400' }}">
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold {{ ($health['hermes_agent']['status'] ?? '') === 'healthy' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400' }}">
                     {{ strtoupper($health['hermes_agent']['status'] ?? 'UNKNOWN') }}
                 </span>
             </div>
-            <div class="text-xs text-slate-400 space-y-1 font-mono">
-                <p>Status Path: <span class="text-white font-bold">Terhubung</span></p>
-                <p>Path: E:\hermes-stock-agent</p>
-                <p>Mode: EOD Paper Only</p>
+            <div class="text-[11px] text-slate-400 font-mono">
+                <p>Python: 3.14.7</p>
+                <p>Mode: EOD Paper</p>
+            </div>
+        </div>
+
+        <!-- Scheduler & Calendar Health -->
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-2">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-white flex items-center space-x-1.5">
+                    <span>📅</span>
+                    <span>BEI Scheduler</span>
+                </span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold {{ $isTradingDay ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400' }}">
+                    {{ $isTradingDay ? 'TRADING DAY' : 'HOLIDAY/WEEKEND' }}
+                </span>
+            </div>
+            <div class="text-[11px] text-slate-400 font-mono">
+                <p>Next: {{ $nextRunTime->format('d/m H:i') }} WIB</p>
+                <p>Mutex: Active</p>
             </div>
         </div>
     </div>

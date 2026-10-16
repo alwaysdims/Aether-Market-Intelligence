@@ -17,9 +17,11 @@ Platform intelijen pasar modal Indonesia (Bursa Efek Indonesia / BEI) berbasis i
 | **Prompt Template Versioning**| `Implemented` | Model Eloquent dan tabel berindeks unik `code + version` untuk prompt LLM. |
 | **Hermes Python Engine** | `Implemented` | EOD market scanner, VPA accumulation logic, dan paper trading engine di `E:\hermes-stock-agent`. |
 | **Frozen Forward Paper Trading**| `Implemented` | Simulasi portofolio EXP-01 vs EXP-04 dengan akuntansi kas riil dan filter gap. |
-| **Hermes CLI Adapter** | `In Progress` | Adapter Python di `services/hermes_adapter.py` untuk jembatan aman ke Laravel. |
-| **AI News Ingestion Pipeline** | `In Progress` | Abstraksi konektor berita resmi IDX dan inferensi LLM via 9router lokal (:20128). |
-| **Laravel Queue & Scheduler** | `Planned` | Penjadwalan otomatis via Windows Task Scheduler pada 16:05 WIB. |
+| **Hermes CLI Adapter** | `Implemented` | Adapter Python di `services/hermes_adapter.py` untuk jembatan aman ke Laravel. |
+| **AI News Ingestion Pipeline** | `Implemented` | Abstraksi konektor berita resmi IDX dan inferensi LLM via 9router lokal (:20128). |
+| **BEI Trading Calendar Service**| `Implemented` | Validasi hari bursa resmi 2026 dan finalitas candle EOD (>= 16:00 WIB). |
+| **Post-Horizon Evaluator (+5D)**| `Implemented` | Pelacakan dan evaluasi akurasi prediksi AI terhadap return 5 hari bursa berikutnya. |
+| **Windows Scheduler Automation**| `Implemented` | Task Scheduler & batch script otomatisasi pada 16:05 WIB dengan proteksi mutex. |
 | **Telegram Bridge Idempotency**| `Planned` | Notifikasi ringkasan pasar dari Laravel memanfaatkan Hermes CLI sender. |
 
 ---
@@ -210,6 +212,7 @@ Atau buka tab **System Health** pada navigasi web dashboard.
 
 - [Dokumen Spesifikasi Produk (PRD.md)](docs/PRD.md)
 - [Metodologi Analisis Saham & Training Model (STOCK_ANALYSIS_AND_TRAINING.md)](docs/STOCK_ANALYSIS_AND_TRAINING.md)
+- [Panduan Operasional & Penjadwalan Windows (WINDOWS_OPERATIONS.md)](docs/WINDOWS_OPERATIONS.md)
 - [Arsitektur Sistem (architecture.md)](docs/architecture.md)
 - [Kontrak Baku JSON (contracts.md)](docs/contracts.md)
 - [Panduan Instalasi Detail (installation.md)](docs/installation.md)

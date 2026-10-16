@@ -7,8 +7,12 @@ use App\Models\AnalysisRun;
 use App\Models\MarketSnapshot;
 use App\Models\NewsItem;
 use App\Models\DataSource;
+use App\Models\NotificationLog;
 use App\Services\HermesAdapterService;
 use App\Services\AiMarketAnalysisService;
+use App\Services\BeiCalendarService;
+use App\Services\PostHorizonEvaluatorService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class HermesSyncEodCommand extends Command
@@ -16,7 +20,7 @@ class HermesSyncEodCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'hermes:sync-eod {--trigger=cli : Trigger type (cli, scheduled, manual)}';
+    protected $signature = 'hermes:sync-eod {--trigger=cli : Trigger type (cli, scheduled, manual)} {--force : Abaikan validasi hari bursa / finalitas waktu}';
 
     /**
      * The console command description.
@@ -26,15 +30,41 @@ class HermesSyncEodCommand extends Command
     /**
      * Execute the console command.
      */
-    public function handle(HermesAdapterService $adapter, AiMarketAnalysisService $aiService)
-    {
+    public function handle(
+        HermesAdapterService $adapter,
+        AiMarketAnalysisService $aiService,
+        BeiCalendarService $calendar,
+        PostHorizonEvaluatorService $evaluator
+    ) {
         $startTime = microtime(true);
-        $runId = 'RUN_' . now()->format('Ymd_His') . '_' . Str::lower(Str::random(4));
         $trigger = $this->option('trigger') ?: 'cli';
+        $force = (bool) $this->option('force');
+        $nowWib = now('Asia/Jakarta');
 
+        // 1. Validasi Kalender Bursa & Finalitas Candle untuk Trigger Terjadwal
+        if ($trigger === 'scheduled' && !$force) {
+            if (!$calendar->isTradingDay($nowWib)) {
+                $this->info("[SCHEDULED] Hari ini ({$nowWib->format('Y-m-d')}) bukan hari bursa aktif BEI. Sinkronisasi dilewati.");
+                return Command::SUCCESS;
+            }
+
+            if (!$calendar->isEodFinal($nowWib)) {
+                $this->warn("[SCHEDULED] Waktu saat ini ({$nowWib->format('H:i')} WIB) sebelum jam penutupan bursa (16:00 WIB). Data EOD belum final. Sinkronisasi dibatalkan.");
+                return Command::SUCCESS;
+            }
+        }
+
+        // 2. Cegah Job Berjalan Bersamaan (Mutex Lock 10 menit)
+        $lock = Cache::lock('hermes_sync_eod_mutex', 600);
+        if (!$lock->get()) {
+            $this->warn("Sinkronisasi EOD sedang berjalan oleh proses lain. Eksekusi dibatalkan untuk mencegah tumpang tindih.");
+            return Command::FAILURE;
+        }
+
+        $runId = 'RUN_' . $nowWib->format('Ymd_His') . '_' . Str::lower(Str::random(4));
         $this->info("=== MEMULAI SINKRONISASI EOD HERMES [{$runId}] ===");
 
-        // 1. Catat AnalysisRun awal
+        // 3. Catat AnalysisRun awal
         $run = AnalysisRun::create([
             'run_id' => $runId,
             'trigger_type' => $trigger,
@@ -43,7 +73,7 @@ class HermesSyncEodCommand extends Command
         ]);
 
         try {
-            // 2. Ambil Snapshot Pasar EOD
+            // 4. Ambil Snapshot Pasar EOD
             $this->line("1. Mengambil market snapshots dari Hermes Stock Agent...");
             $snapResp = $adapter->getMarketSnapshots();
 
@@ -80,7 +110,7 @@ class HermesSyncEodCommand extends Command
                 $this->warn("   -> Tidak ada snapshot pasar baru / peringatan: " . ($snapResp['error'] ?? 'None'));
             }
 
-            // 3. Ambil Berita Pasar Resmi
+            // 5. Ambil Berita Pasar Resmi
             $this->line("2. Mengambil berita pasar modal dari feed resmi...");
             $newsResp = $adapter->fetchNewsFeed(null, 10);
             $insertedNews = 0;
@@ -111,14 +141,22 @@ class HermesSyncEodCommand extends Command
                 $this->info("   -> Berhasil menyinkronkan {$insertedNews} berita terverifikasi.");
             }
 
-            // 4. Jalankan Analisis AI Gemini 3.8 Flash High
+            // 6. Jalankan Analisis AI Gemini 3.8 Flash High
             $this->line("3. Menjalankan inferensi intelijen pasar AI (ag/gemini-3.8-flash-high)...");
             $recentNewsList = $newsResp['data']['items'] ?? [];
             $analysis = $aiService->analyze($run, $marketSummaryText, $recentNewsList);
 
             $this->info("   -> Analisis AI selesai. Arah: " . strtoupper($analysis->impact_direction) . " (Status Validasi: {$analysis->validation_status})");
 
-            // 5. Update Status Run
+            // 7. Daftarkan Prediksi ke Post-Horizon Evaluator & Jalankan Evaluasi Pending
+            $this->line("4. Mendaftarkan prediksi ke post-horizon evaluator (5 hari bursa)...");
+            $evalPredictions = $evaluator->registerPredictions($analysis, 5);
+            $this->info("   -> Terdaftar " . count($evalPredictions) . " instrumen evaluasi horizon.");
+
+            $evalResult = $evaluator->evaluatePending($nowWib);
+            $this->line("   -> Evaluasi pending: {$evalResult['evaluated_count']} selesai, {$evalResult['skipped_not_due']} belum jatuh tempo.");
+
+            // 8. Update Status Run
             $duration = round(microtime(true) - $startTime, 2);
             $run->update([
                 'status' => 'completed',
@@ -128,10 +166,12 @@ class HermesSyncEodCommand extends Command
                     'snapshots_count' => $insertedSnapshots,
                     'news_count' => $insertedNews,
                     'impact_direction' => $analysis->impact_direction,
+                    'evaluations_registered' => count($evalPredictions),
                 ],
             ]);
 
             $this->info("=== PIPELINE EOD SELESAI SUKSES DALAM {$duration} DETIK ===");
+            $lock->release();
             return Command::SUCCESS;
         } catch (\Throwable $e) {
             $duration = round(microtime(true) - $startTime, 2);
@@ -142,7 +182,26 @@ class HermesSyncEodCommand extends Command
                 'error_message' => $e->getMessage(),
             ]);
 
+            // Catat log error dengan hash deduplikasi (cooldown 6 jam untuk error yang sama)
+            $errorHash = sha1($e->getMessage() . $e->getFile() . $e->getLine());
+            $recentErr = NotificationLog::where('message_hash', $errorHash)
+                ->where('created_at', '>=', now()->subHours(6))
+                ->first();
+
+            if (!$recentErr) {
+                NotificationLog::create([
+                    'channel' => 'telegram',
+                    'destination' => 'admin_error_alert',
+                    'analysis_run_id' => $run->id,
+                    'message_hash' => $errorHash,
+                    'message_payload' => "ERROR PIPELINE EOD [{$runId}]: " . $e->getMessage(),
+                    'status' => 'failed',
+                    'error_message' => $e->getMessage(),
+                ]);
+            }
+
             $this->error("=== PIPELINE EOD GAGAL: " . $e->getMessage() . " ===");
+            $lock->release();
             return Command::FAILURE;
         }
     }

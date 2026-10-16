@@ -17,4 +17,9 @@ class MarketAnalysis extends Model
     {
         return $this->belongsTo(AnalysisRun::class);
     }
+
+    public function postHorizonEvaluations()
+    {
+        return $this->hasMany(PostHorizonEvaluation::class);
+    }
 }

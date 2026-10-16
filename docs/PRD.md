@@ -174,10 +174,14 @@ Pengguna utama sistem adalah Pengembang/Operator Kuantitatif Tunggal yang mengop
 ### B. Roadmap Pengembangan
 - **Fase 0 (Selesai):** Audit lingkungan, toolchain Windows 11, status git, database, model AI router, dan jalur Telegram.
 - **Fase 1 (Selesai):** Inisialisasi Laravel 13, integrasi PostgreSQL 16 (`project-bot`), migrasi 8 tabel, seeder, controller, view Blade, dan unit test dasar.
-- **Fase 2 (Sedang Berjalan):**
+- **Fase 2 (Selesai):**
   * Penyusunan PRD, README, dan dokumentasi metodologi kuantitatif.
   * Implementasi Python Adapter (`E:\Project-bot\services\hermes_adapter.py`).
   * Abstraksi konektor berita pasar modal terverifikasi.
   * Service integrasi Laravel (`HermesAdapterService`) dan pipeline eksekusi EOD.
-- **Fase 3 (Mendatang):** Otomasi job scheduler Windows Task Scheduler / Laravel Cron, live synchronization feed berita, dan pengujian transmisi Telegram berkala.
-- **Fase 4 (Mendatang):** Evaluasi performa out-of-sample forward paper trading EXP-04 setelah akumulasi 30 transaksi tertutup.
+- **Fase 3 (Selesai):**
+  * BEI Calendar Service (`BeiCalendarService`): validasi hari bursa 2026 & finalitas EOD.
+  * Post-Horizon Evaluator (`PostHorizonEvaluatorService` & `hermes:evaluate-horizon`): evaluasi akurasi prediksi AI setelah 5 hari bursa.
+  * Otomasi Scheduler Windows: Task Scheduler, batch script `run_eod_pipeline.bat`, proteksi mutex lock, dan cooldown deduplikasi error.
+  * Integrasi metrik evaluasi & jadwal operasional pada dashboard Blade.
+- **Fase 4 (Mendatang):** Evaluasi performa out-of-sample forward paper trading EXP-04 setelah akumulasi 30 transaksi tertutup dan pengiriman ringkasan Telegram idempotent.

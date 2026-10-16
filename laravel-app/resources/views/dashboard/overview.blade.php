@@ -59,6 +59,38 @@
         </div>
     </div>
 
+    <!-- Operational Schedule & Data Finality Bar -->
+    <div class="bg-slate-800/80 border border-slate-700/80 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 rounded-lg bg-sky-500/10 text-sky-400 flex items-center justify-center font-bold text-sm">
+                🕒
+            </div>
+            <div>
+                <p class="text-xs text-slate-400">Jadwal Eksekusi EOD Berikutnya</p>
+                <p class="text-sm font-bold text-white font-mono">
+                    {{ $nextRunTime->format('l, d M Y - H:i') }} WIB (16:05 WIB)
+                </p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-6 text-xs">
+            <div>
+                <span class="text-slate-400 block">Status Data Pasar:</span>
+                <span class="font-semibold {{ $isEodFinal ? 'text-emerald-400' : 'text-amber-400' }}">
+                    {{ $isEodFinal ? 'FINAL EOD (>= 16:00 WIB)' : 'BELUM FINAL / INTRADAY' }}
+                </span>
+            </div>
+            <div>
+                <span class="text-slate-400 block">Tanggal Bar Terakhir:</span>
+                <span class="text-slate-200 font-mono font-bold">{{ $latestSnapshot ? $latestSnapshot->bar_date->format('d M Y') : '-' }}</span>
+            </div>
+            <div>
+                <span class="text-slate-400 block">Evaluasi 5 Hari Bursa:</span>
+                <span class="text-sky-400 font-bold font-mono">{{ $evalMetrics['total_pending'] }} Pending / {{ $evalMetrics['total_evaluated'] }} Selesai</span>
+            </div>
+        </div>
+    </div>
+
     <!-- Warnings / Stale Sources Alert -->
     @if($staleSources->isNotEmpty())
         <div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-start space-x-3">

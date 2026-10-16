@@ -10,15 +10,25 @@ use App\Models\MarketAnalysis;
 use App\Models\AnalysisRun;
 use App\Models\PromptTemplate;
 use App\Models\SystemHealthCheck;
+use App\Models\PostHorizonEvaluation;
 use App\Services\SystemHealthService;
+use App\Services\BeiCalendarService;
+use App\Services\PostHorizonEvaluatorService;
 
 class DashboardController extends Controller
 {
     protected SystemHealthService $healthService;
+    protected BeiCalendarService $calendar;
+    protected PostHorizonEvaluatorService $evaluator;
 
-    public function __construct(SystemHealthService $healthService)
-    {
+    public function __construct(
+        SystemHealthService $healthService,
+        BeiCalendarService $calendar,
+        PostHorizonEvaluatorService $evaluator
+    ) {
         $this->healthService = $healthService;
+        $this->calendar = $calendar;
+        $this->evaluator = $evaluator;
     }
 
     /**
@@ -34,13 +44,24 @@ class DashboardController extends Controller
         $activeDataSources = DataSource::where('status', 'active')->count();
         $staleSources = DataSource::where('status', '!=', 'active')->get();
 
+        $nextRunTime = $this->calendar->getNextScheduledRunTime();
+        $latestSnapshot = MarketSnapshot::latest('bar_date')->first();
+        $isEodFinal = $this->calendar->isEodFinal();
+        $evalMetrics = $this->evaluator->getMetricsSummary();
+        $recentEvals = PostHorizonEvaluation::latest('decision_date')->take(5)->get();
+
         return view('dashboard.overview', compact(
             'health',
             'lastRun',
             'lastAnalysis',
             'newsCountToday',
             'activeDataSources',
-            'staleSources'
+            'staleSources',
+            'nextRunTime',
+            'latestSnapshot',
+            'isEodFinal',
+            'evalMetrics',
+            'recentEvals'
         ));
     }
 
@@ -70,11 +91,16 @@ class DashboardController extends Controller
      */
     public function history()
     {
-        $runs = AnalysisRun::with('marketAnalyses')
+        $runs = AnalysisRun::with(['marketAnalyses.postHorizonEvaluations'])
             ->latest('started_at')
             ->paginate(15);
 
-        return view('dashboard.history', compact('runs'));
+        $evalMetrics = $this->evaluator->getMetricsSummary();
+        $evaluations = PostHorizonEvaluation::with('marketAnalysis')
+            ->latest('decision_date')
+            ->paginate(20);
+
+        return view('dashboard.history', compact('runs', 'evalMetrics', 'evaluations'));
     }
 
     /**
@@ -84,8 +110,10 @@ class DashboardController extends Controller
     {
         $health = $this->healthService->checkAll();
         $recentChecks = SystemHealthCheck::latest('checked_at')->take(30)->get();
+        $nextRunTime = $this->calendar->getNextScheduledRunTime();
+        $isTradingDay = $this->calendar->isTradingDay(now('Asia/Jakarta'));
 
-        return view('dashboard.health', compact('health', 'recentChecks'));
+        return view('dashboard.health', compact('health', 'recentChecks', 'nextRunTime', 'isTradingDay'));
     }
 
     /**
