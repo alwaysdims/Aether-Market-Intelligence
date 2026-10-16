@@ -1,15 +1,16 @@
 # PANDUAN OPERASIONAL & PENJADWALAN WINDOWS
-## HERMES MARKET INTELLIGENCE
+## AETHER MARKET INTELLIGENCE
 
-**Versi:** 1.0.0  
-**Tanggal:** 16 Oktober 2026  
+**Versi:** 2.0.0 (Rebranded from Hermes Market Intelligence)  
+**Repositori Resmi:** [https://github.com/alwaysdims/Aether-Market-Intelligence](https://github.com/alwaysdims/Aether-Market-Intelligence)  
+**Tanggal:** 17 Oktober 2026  
 **Target Lingkungan:** Windows 11 On-Premise Workstation  
 
 ---
 
 ## 1. PENDAHULUAN & ARSITEKTUR OTOMASI
 
-Hermes Market Intelligence mengoperasikan pipeline analitik harian pasar modal Indonesia (BEI) secara otomatis tanpa ketergantungan pada server cloud eksternal. Otomasi diatur mengikuti ritme resmi perdagangan Bursa Efek Indonesia:
+Aether Market Intelligence mengoperasikan pipeline analitik harian pasar modal Indonesia (BEI) secara otomatis tanpa ketergantungan pada server cloud eksternal. Otomasi diatur mengikuti ritme resmi perdagangan Bursa Efek Indonesia:
 - **09:00 - 15:50 WIB:** Sesi perdagangan aktif (Intraday).
 - **16:00 WIB:** Pasar resmi ditutup (Candle harian dinyatakan FINAL).
 - **16:05 WIB:** Eksekusi otomatis pipeline EOD (Download OHLCV, feed berita, inferensi AI, dan pendaftaran prediksi).

@@ -1,5 +1,5 @@
 @echo off
-REM Hermes Market Intelligence - Direct EOD Pipeline Runner
+REM Aether Market Intelligence - Direct EOD Pipeline Runner
 REM Scheduled at 16:05 WIB (Monday-Friday) on Windows Task Scheduler.
 
 cd /d "E:\Project-bot\laravel-app"

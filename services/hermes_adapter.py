@@ -1,6 +1,6 @@
-"""Hermes Market Intelligence — Python Adapter Bridge.
+"""Aether Market Intelligence — Python Adapter Bridge.
 
-Connects Laravel Control Plane with Hermes Stock Agent (E:\\hermes-stock-agent)
+Connects Laravel Control Plane with Hermes Stock Agent (E:\hermes-stock-agent)
 and verified market news feeds through standard JSON input/output contracts.
 
 STRICT CONSTRAINTS:
@@ -264,7 +264,7 @@ def handle_fetch_news_feed(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     req = urllib.request.Request(
         feed_url,
-        headers={"User-Agent": "HermesMarketIntelligence/1.0 (+http://localhost:8000)"}
+        headers={"User-Agent": "AetherMarketIntelligence/1.0 (+https://github.com/alwaysdims/Aether-Market-Intelligence)"}
     )
 
     now_wib = get_timestamp_wib()
@@ -333,7 +333,7 @@ def handle_fetch_news_feed(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def main():
     """CLI dispatcher for hermes_adapter.py."""
-    parser = argparse.ArgumentParser(description="Hermes Market Intelligence Python Adapter Bridge")
+    parser = argparse.ArgumentParser(description="Aether Market Intelligence Python Adapter Bridge")
     parser.add_argument("--action", required=True, help="Adapter action to execute")
     parser.add_argument("--payload", default="{}", help="JSON payload string")
     parser.add_argument("--stdin", action="store_true", help="Read payload from stdin")

@@ -1,6 +1,12 @@
-# Hermes Market Intelligence ⚡
+# Aether Market Intelligence ⚡
 
-Platform intelijen pasar modal Indonesia (Bursa Efek Indonesia / BEI) berbasis integrasi web dashboard, mesin analitik kuantitatif Python, model penalaran AI Gemini 3.8 Flash High, dan notifikasi Telegram terpadu.
+<p align="center">
+  <img src="laravel-app/public/images/logo.png" alt="Aether Market Intelligence Logo" width="128" height="128" style="border-radius: 20px;">
+</p>
+
+Platform intelijen pasar modal Indonesia (Bursa Efek Indonesia / BEI) berbasis integrasi web dashboard, mesin analitik kuantitatif Python (Hermes Stock Agent), model penalaran AI Gemini 3.8 Flash High, dan notifikasi Telegram terpadu.
+
+**Repositori Resmi:** [https://github.com/alwaysdims/Aether-Market-Intelligence](https://github.com/alwaysdims/Aether-Market-Intelligence)  
 
 > ⚠️ **DISCLAIMER RISET & BATASAN SISTEM:**  
 > Sistem ini dibuat semata-mata untuk tujuan riset kuantitatif, otomasi pengolahan data pasar, dan evaluasi strategi perdagangan saham secara simulasi (paper trading). Sistem **TIDAK TERHUBUNG DENGAN BROKER LIVE**, **TIDAK MENGIRIM ORDER SUNGGUHAN**, dan **TIDAK MENJAMIN KEUNTUNGAN FINANSIAL**. Seluruh pengujian strategi masa lalu membuktikan model machine learning murni memiliki ekspektasi negatif setelah memperhitungkan biaya transaksi ritel BEI.
@@ -141,7 +147,7 @@ php artisan key:generate
 
 Pastikan variabel database PostgreSQL terkonfigurasi dengan kredensial lokal Anda:
 ```ini
-APP_NAME="Hermes Market Intelligence"
+APP_NAME="Aether Market Intelligence"
 APP_ENV=local
 APP_KEY=base64:...
 APP_DEBUG=true

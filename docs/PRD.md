@@ -1,17 +1,19 @@
 # PRODUCT REQUIREMENTS DOCUMENT (PRD)
-## HERMES MARKET INTELLIGENCE
+## AETHER MARKET INTELLIGENCE
 
-**Versi Dokumen:** 1.0.0  
-**Status:** Aktif / Fase Pengembangan 2  
-**Tanggal:** 16 Oktober 2026  
+**Versi Dokumen:** 2.0.0 (Rebranded from Hermes Market Intelligence)  
+**Repositori Resmi:** [https://github.com/alwaysdims/Aether-Market-Intelligence](https://github.com/alwaysdims/Aether-Market-Intelligence)  
+**Status:** Aktif / Fase 6  
+**Tanggal:** 17 Oktober 2026  
 **Target Lingkungan:** On-Premise Localhost (Windows 11)  
 
 ---
 
 ## 1. IDENTITAS PROYEK
 
-- **Nama Proyek:** Hermes Market Intelligence
-- **Jenis Sistem:** Platform intelijen pasar modal berbasis AI terpadu (Control Plane Web, Mesin Kuantitatif Python, dan Transmisi Notifikasi Telegram).
+- **Nama Proyek:** Aether Market Intelligence
+- **Repositori GitHub:** https://github.com/alwaysdims/Aether-Market-Intelligence
+- **Jenis Sistem:** Platform intelijen pasar modal berbasis AI terpadu (Control Plane Web, Mesin Kuantitatif Python Hermes Stock Agent, dan Transmisi Notifikasi Telegram).
 - **Tujuan Utama:** Mengumpulkan data pasar resmi BEI (Bursa Efek Indonesia), memproses broker summary & indikator teknikal non-lookahead, mengagregasi berita pasar modal, menganalisis dampak informasi menggunakan model LLM lokal berbobot tinggi, menyimpan histori secara terstruktur di PostgreSQL, serta mendistribusikan ringkasan tervalidasi ke dashboard lokal dan bot Telegram.
 - **Status Pengembangan:** Fondasi Laravel 13, database relasional PostgreSQL 16, dan view Blade telah selesai diuji (Fase 1). Integrasi adapter mesin analitik Python `E:\hermes-stock-agent` dan pipeline berita sedang dibangun (Fase 2).
 

@@ -1,5 +1,5 @@
 # LAPORAN EVALUASI & RENCANA OPERASIONAL FASE 6
-## HERMES MARKET INTELLIGENCE + HERMES STOCK AGENT
+## AETHER MARKET INTELLIGENCE + HERMES STOCK AGENT
 
 **Dokumen:** `reports/evaluations/phase6_readiness_and_evaluation_plan.md`  
 **Waktu Audit:** Sabtu, 17 Oktober 2026, 00:45 WIB  

@@ -1,5 +1,5 @@
 # LAPORAN FASE 6.1 — PRE-EVALUATION GATE & POST-HORIZON VALIDATION
-## HERMES MARKET INTELLIGENCE + HERMES STOCK AGENT
+## AETHER MARKET INTELLIGENCE + HERMES STOCK AGENT
 
 **Dokumen:** `reports/evaluations/phase6_1_pre_evaluation_gate.md`  
 **Waktu Audit:** Sabtu, 17 Oktober 2026, 01:10 WIB  

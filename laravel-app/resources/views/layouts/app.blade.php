@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ config('app.name', 'Hermes Market Intelligence') }}</title>
+    <title>{{ config('app.name', 'Aether Market Intelligence') }}</title>
+    <link rel="icon" type="image/png" href="{{ asset('favicon.png') }}">
+    <link rel="shortcut icon" href="{{ asset('favicon.ico') }}">
     <!-- Tailwind CSS CDN for instant robust local styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Alpine.js for lightweight reactivity -->
@@ -30,11 +32,9 @@
     <header class="bg-slate-800 border-b border-slate-700 sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between h-16">
             <div class="flex items-center space-x-3">
-                <div class="w-9 h-9 bg-sky-500 rounded-lg flex items-center justify-center font-bold text-slate-900 text-xl shadow-lg shadow-sky-500/20">
-                    ⚡
-                </div>
+                <img src="{{ asset('images/logo.png') }}" alt="Aether Logo" class="w-9 h-9 rounded-lg object-cover shadow-lg shadow-sky-500/20 border border-sky-400/30">
                 <div>
-                    <h1 class="text-base font-bold text-white tracking-wide">Hermes Market Intelligence</h1>
+                    <h1 class="text-base font-bold text-white tracking-wide">Aether Market Intelligence</h1>
                     <p class="text-xs text-sky-400 font-mono">Control Plane &bull; BEI Research</p>
                 </div>
             </div>
@@ -58,7 +58,7 @@
 
     <!-- Footer -->
     <footer class="bg-slate-900 border-t border-slate-800 text-xs text-slate-500 py-4 text-center">
-        <p>Hermes Market Intelligence &bull; AI Research Engine &bull; Strictly Zero Live Broker Execution</p>
+        <p>Aether Market Intelligence &bull; AI Research Engine &bull; Strictly Zero Live Broker Execution</p>
     </footer>
 </body>
 </html>

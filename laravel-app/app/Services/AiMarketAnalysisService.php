@@ -33,7 +33,7 @@ class AiMarketAnalysisService
             ->latest('version')
             ->first();
 
-        $systemPrompt = $template ? $template->system_prompt : 'You are Hermes Market Intelligence AI. Evaluate Indonesian stock market condition objectively without fabricating price targets.';
+        $systemPrompt = $template ? $template->system_prompt : 'You are Aether Market Intelligence AI. Evaluate Indonesian stock market condition objectively without fabricating price targets.';
         $userTemplate = $template ? $template->user_prompt_template : "Analisis data pasar:\n{market_summary}";
 
         // Format news context if available

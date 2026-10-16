@@ -5,7 +5,7 @@
     <div class="flex items-center justify-between">
         <div>
             <h2 class="text-xl font-bold text-white">System Health & Diagnostik Komponen</h2>
-            <p class="text-xs text-slate-400">Status kesehatan waktu nyata seluruh komponen Hermes Market Intelligence.</p>
+            <p class="text-xs text-slate-400">Status kesehatan waktu nyata seluruh komponen Aether Market Intelligence.</p>
         </div>
         <button onclick="window.location.reload()" class="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-semibold shadow transition">
             🔄 Refresh Health Check

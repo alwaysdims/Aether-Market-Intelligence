@@ -1,8 +1,10 @@
-# ARSITEKTUR HERMES MARKET INTELLIGENCE
+# ARSITEKTUR AETHER MARKET INTELLIGENCE
+
+**Repositori Resmi:** [https://github.com/alwaysdims/Aether-Market-Intelligence](https://github.com/alwaysdims/Aether-Market-Intelligence)  
 
 ## 1. Ikhtisar Sistem
-Hermes Market Intelligence adalah sistem intelijen pasar modal Indonesia (Bursa Efek Indonesia / BEI) yang mengintegrasikan:
-1. **Laravel Control Plane (`E:\Project-bot\laravel-app`):** Dashboard web lokal, database PostgreSQL, queue, job scheduler, manajemen prompt template, dan histori analisis AI.
+Aether Market Intelligence adalah sistem intelijen pasar modal Indonesia (Bursa Efek Indonesia / BEI) yang mengintegrasikan:
+1. **Aether Laravel Control Plane (`E:\Project-bot\laravel-app`):** Dashboard web lokal, database PostgreSQL, queue, job scheduler, manajemen prompt template, dan histori analisis AI.
 2. **Hermes Stock Agent (`E:\hermes-stock-agent`):** Mesin analitik kuantitatif Python independen (VPA akumulasi bandarmologi, Daily EOD market scanner, dan forward paper trading dual-portofolio EXP-01 vs EXP-04).
 3. **Bot Telegram (`@Info_BosKuu_bot`):** Kanal transmisi notifikasi pasar resmi ke admin (Chat ID: `5923895922`).
 4. **AI Reasoning Engine (Gemini 3.8 Flash High):** Model AI via endpoint router lokal `http://127.0.0.1:20128/v1` dengan identifier `ag/gemini-3.8-flash-high`.

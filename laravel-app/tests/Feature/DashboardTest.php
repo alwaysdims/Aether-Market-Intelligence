@@ -38,7 +38,7 @@ class DashboardTest extends TestCase
     {
         $response = $this->get('/');
         $response->assertStatus(200);
-        $response->assertSee('Hermes Market Intelligence');
+        $response->assertSee('Aether Market Intelligence');
         $response->assertSee('PostgreSQL DB');
     }
 

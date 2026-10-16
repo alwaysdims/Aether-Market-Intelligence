@@ -1,5 +1,5 @@
 @echo off
-REM Hermes Market Intelligence - Automated Laravel Scheduler Runner
+REM Aether Market Intelligence - Automated Laravel Scheduler Runner
 REM Executes every minute via Windows Task Scheduler or background runner.
 
 cd /d "E:\Project-bot\laravel-app"

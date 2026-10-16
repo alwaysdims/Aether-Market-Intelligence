@@ -55,7 +55,7 @@ class HermesMarketIntelligenceSeeder extends Seeder
             ['code' => 'MARKET_INTELLIGENCE_DAILY', 'version' => '1.0.0'],
             [
                 'model_id' => 'ag/gemini-3.8-flash-high',
-                'system_prompt' => 'You are Hermes Market Intelligence AI. Evaluate Indonesian stock market condition objectively without fabricating price targets or guaranteed returns.',
+                'system_prompt' => 'You are Aether Market Intelligence AI. Evaluate Indonesian stock market condition objectively without fabricating price targets or guaranteed returns.',
                 'user_prompt_template' => "Analisis data pasar dan berita BEI berikut:\n\n{market_summary}\n\nBerikan kesimpulan objektif dalam JSON: market_regime_summary, impact_direction (positive/negative/mixed/unclear), impact_horizon (intraday/multi_day/long_term), impacted_tickers, risks, unknowns.",
                 'is_active' => true,
                 'created_at' => now(),

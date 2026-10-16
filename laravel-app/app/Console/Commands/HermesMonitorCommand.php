@@ -35,7 +35,7 @@ class HermesMonitorCommand extends Command
     ) {
         $nowWib = Carbon::now('Asia/Jakarta');
         $this->info("===============================================================================");
-        $this->info("         AUDIT OPERASIONAL & MONITORING HARIAN — HERMES MARKET INTELLIGENCE     ");
+        $this->info("         AUDIT OPERASIONAL & MONITORING HARIAN — AETHER MARKET INTELLIGENCE     ");
         $this->info("         Waktu Audit: " . $nowWib->format('d M Y, H:i:s') . " WIB                     ");
         $this->info("===============================================================================");
 

@@ -1,8 +1,9 @@
 # DOKUMENTASI METODE ANALISIS SAHAM, TRAINING MODEL, DAN EVALUASI PERFORMA
-## HERMES MARKET INTELLIGENCE
+## AETHER MARKET INTELLIGENCE
 
-**Versi Dokumen:** 1.0.0  
-**Tanggal:** 16 Oktober 2026  
+**Versi Dokumen:** 2.0.0 (Rebranded from Hermes Market Intelligence)  
+**Repositori Resmi:** [https://github.com/alwaysdims/Aether-Market-Intelligence](https://github.com/alwaysdims/Aether-Market-Intelligence)  
+**Tanggal:** 17 Oktober 2026  
 **Repositori Terkait:** `E:\Project-bot` & `E:\hermes-stock-agent`  
 **Status Operasional:** Research & Forward Paper Trading (Zero Live Execution)  
 
@@ -10,7 +11,7 @@
 
 ## 1. PENDAHULUAN & PRINSIP DASAR
 
-Dokumen ini menjelaskan secara teknis dan matematis metodologi pengumpulan data, analisis teknikal berbasis aturan, inferensi dampak berita berbantuan LLM (Gemini 3.8 Flash High), riwayat audit model prediktif (Machine Learning), serta protokol evaluasi performa pada sistem **Hermes Market Intelligence**.
+Dokumen ini menjelaskan secara teknis dan matematis metodologi pengumpulan data, analisis teknikal berbasis aturan, inferensi dampak berita berbantuan LLM (Gemini 3.8 Flash High), riwayat audit model prediktif (Machine Learning), serta protokol evaluasi performa pada sistem **Aether Market Intelligence** dengan mesin kuantitatif **Hermes Stock Agent**.
 
 ### Prinsip Kuantitatif Utama:
 1. **Pemisahan Tegas Fakta vs Opini vs Sinyal:** Data harga resmi penutupan (EOD) dan keterbukaan informasi emiten adalah fakta historis; analisis LLM adalah interpretasi berkonteks; sinyal kuantitatif adalah hipotesis berbasis kondisi data.

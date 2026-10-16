@@ -33,7 +33,7 @@ class TelegramNotificationService
         $nowWib = Carbon::now('Asia/Jakarta')->translatedFormat('d M Y, H:i') . ' WIB';
         
         $lines = [];
-        $lines[] = "📊 HERMES MARKET INTELLIGENCE — EOD REPORT";
+        $lines[] = "📊 AETHER MARKET INTELLIGENCE — EOD REPORT";
         $lines[] = "══════════════════════════════════════════";
         $lines[] = "Waktu Analisis : {$nowWib}";
         $lines[] = "Status Pipeline: " . strtoupper($run->status ?? 'UNKNOWN') . " (ID: {$run->run_id})";
@@ -254,7 +254,7 @@ class TelegramNotificationService
 
         $nowWib = Carbon::now('Asia/Jakarta')->translatedFormat('d M Y, H:i') . ' WIB';
         $lines = [
-            "🚨 PERINGATAN SISTEM — HERMES MARKET INTELLIGENCE",
+            "🚨 PERINGATAN SISTEM — AETHER MARKET INTELLIGENCE",
             "══════════════════════════════════════════════════",
             "Waktu : {$nowWib}",
             "Pesan : {$sanitizedError}",

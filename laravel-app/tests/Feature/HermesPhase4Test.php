@@ -75,7 +75,7 @@ class HermesPhase4Test extends TestCase
 
         $msg = $this->telegram->formatEodMessage($run, $analysis);
 
-        $this->assertStringContainsString('HERMES MARKET INTELLIGENCE — EOD REPORT', $msg);
+        $this->assertStringContainsString('AETHER MARKET INTELLIGENCE — EOD REPORT', $msg);
         $this->assertStringContainsString('ag/gemini-3.8-flash-high [VALID_SCHEMA]', $msg);
         $this->assertStringContainsString('POSITIVE', $msg);
         $this->assertStringContainsString('MEDC', $msg);
