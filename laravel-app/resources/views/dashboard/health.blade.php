@@ -13,7 +13,7 @@
     </div>
 
     <!-- Active Component Status Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
         <!-- PostgreSQL Health -->
         <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-2">
             <div class="flex items-center justify-between">
@@ -65,20 +65,37 @@
             </div>
         </div>
 
-        <!-- Scheduler & Calendar Health -->
+        <!-- Telegram Channel Health -->
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-2">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-white flex items-center space-x-1.5">
+                    <span>✈️</span>
+                    <span>Telegram Bot</span>
+                </span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold {{ ($health['telegram_channel']['status'] ?? '') === 'healthy' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400' }}">
+                    {{ strtoupper($health['telegram_channel']['status'] ?? 'UNKNOWN') }}
+                </span>
+            </div>
+            <div class="text-[11px] text-slate-400 font-mono">
+                <p>Bot: @Info_BosKuu</p>
+                <p>Status: {{ strtoupper($health['telegram_channel']['details']['last_status'] ?? 'READY') }}</p>
+            </div>
+        </div>
+
+        <!-- BEI Calendar & EOD Finality -->
         <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 space-y-2">
             <div class="flex items-center justify-between">
                 <span class="text-xs font-bold text-white flex items-center space-x-1.5">
                     <span>📅</span>
-                    <span>BEI Scheduler</span>
+                    <span>Jadwal Bursa</span>
                 </span>
                 <span class="px-2 py-0.5 rounded text-[10px] font-bold {{ $isTradingDay ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400' }}">
-                    {{ $isTradingDay ? 'TRADING DAY' : 'HOLIDAY/WEEKEND' }}
+                    {{ $isTradingDay ? 'HARI BURSA' : 'LIBUR BURSA' }}
                 </span>
             </div>
             <div class="text-[11px] text-slate-400 font-mono">
-                <p>Next: {{ $nextRunTime->format('d/m H:i') }} WIB</p>
-                <p>Mutex: Active</p>
+                <p>Target: 16:05 WIB</p>
+                <p>Next: {{ $nextRunTime->format('d/m/Y H:i') }}</p>
             </div>
         </div>
     </div>

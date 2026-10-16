@@ -89,17 +89,7 @@ class AiMarketAnalysisService
 
         // Fallback analysis when model endpoint is unreachable or returns non-JSON
         if (!$analysisData) {
-            $analysisData = [
-                'market_regime_summary' => 'Analisis kuantitatif terintegrasi: data pasar EOD berhasil dicatat ke database. Inferensi LLM saat ini dalam mode fallback terstruktur.',
-                'impact_direction' => 'unclear',
-                'impact_horizon' => 'multi_day',
-                'confidence_score' => 0.50,
-                'impacted_tickers' => [],
-                'verified_facts' => ['Data snapshot EOD diarsipkan secara otomatis'],
-                'unverified_points' => [],
-                'risks' => ['Ketiadaan respon router AI lokal'],
-                'unknowns' => ['Arah likuiditas sesi berikutnya'],
-            ];
+            return $this->buildFallbackAnalysis($run, $marketContext, $template);
         }
 
         return MarketAnalysis::create([
@@ -113,6 +103,37 @@ class AiMarketAnalysisService
             'confidence_score' => $analysisData['confidence_score'] ?? 0.50,
             'structured_output' => $analysisData,
             'validation_status' => $validationStatus,
+        ]);
+    }
+
+    /**
+     * Build structured fallback analysis when AI router fails or times out.
+     */
+    public function buildFallbackAnalysis(AnalysisRun $run, string $marketContext = '', ?PromptTemplate $template = null): MarketAnalysis
+    {
+        $analysisData = [
+            'market_regime_summary' => 'Analisis kuantitatif terintegrasi: data pasar EOD berhasil dicatat ke database. Inferensi LLM saat ini dalam mode fallback terstruktur.',
+            'impact_direction' => 'unclear',
+            'impact_horizon' => 'multi_day',
+            'confidence_score' => 0.50,
+            'impacted_tickers' => [],
+            'verified_facts' => ['Data snapshot EOD diarsipkan secara otomatis'],
+            'unverified_points' => [],
+            'risks' => ['Ketiadaan respon router AI lokal'],
+            'unknowns' => ['Arah likuiditas sesi berikutnya'],
+        ];
+
+        return MarketAnalysis::create([
+            'analysis_run_id' => $run->id,
+            'prompt_template_id' => $template?->id,
+            'model_name' => $this->modelId,
+            'prompt_version' => $template ? $template->version : '1.0.0',
+            'market_regime_summary' => $analysisData['market_regime_summary'],
+            'impact_direction' => 'unclear',
+            'impact_horizon' => 'multi_day',
+            'confidence_score' => 0.50,
+            'structured_output' => $analysisData,
+            'validation_status' => 'fallback',
         ]);
     }
 }

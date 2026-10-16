@@ -94,6 +94,8 @@ class PostHorizonEvaluatorService
                     'predicted_confidence' => $analysis->confidence_score,
                     'model_name' => $analysis->model_name,
                     'prompt_version' => $analysis->prompt_version,
+                    'is_fallback' => ($analysis->validation_status === 'fallback'),
+                    'validation_status' => $analysis->validation_status ?? 'valid_schema',
                     'status' => 'pending',
                 ]
             );
@@ -234,6 +236,16 @@ class PostHorizonEvaluatorService
         $directionalCount = $correctCount + $incorrectCount;
         $accuracyPct = $directionalCount > 0 ? round(($correctCount / $directionalCount) * 100, 2) : 0.0;
 
+        // Separate AI Genuine reasoning metrics from rule-based fallback predictions
+        $aiEvaluated = $evaluated->where('is_fallback', false);
+        $aiCorrect = $aiEvaluated->where('outcome', 'correct')->count();
+        $aiIncorrect = $aiEvaluated->where('outcome', 'incorrect')->count();
+        $aiDirectional = $aiCorrect + $aiIncorrect;
+        $aiAccuracyPct = $aiDirectional > 0 ? round(($aiCorrect / $aiDirectional) * 100, 2) : 0.0;
+
+        $fallbackEvaluated = $evaluated->where('is_fallback', true);
+        $fallbackCount = PostHorizonEvaluation::where('is_fallback', true)->count();
+
         // Baseline: Always Positive (Buy & Hold directional bias)
         $actualPositiveCount = $evaluated->where('actual_direction', 'positive')->count();
         $baselineAlwaysPositivePct = $totalEvaluated > 0 ? round(($actualPositiveCount / $totalEvaluated) * 100, 2) : 0.0;
@@ -274,6 +286,9 @@ class PostHorizonEvaluatorService
             'neutral_count' => $neutralCount,
             'directional_count' => $directionalCount,
             'accuracy_pct' => $accuracyPct,
+            'ai_accuracy_pct' => $aiAccuracyPct,
+            'ai_evaluated_count' => $aiEvaluated->count(),
+            'fallback_count' => $fallbackCount,
             'baseline_always_positive_pct' => $baselineAlwaysPositivePct,
             'confusion_matrix' => $confusionMatrix,
             'ticker_breakdown' => $tickerBreakdown,

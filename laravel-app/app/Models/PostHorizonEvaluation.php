@@ -18,6 +18,7 @@ class PostHorizonEvaluation extends Model
         'actual_price' => 'decimal:2',
         'actual_price_date' => 'date',
         'actual_return_pct' => 'float',
+        'is_fallback' => 'boolean',
         'evaluated_at' => 'datetime',
     ];
 

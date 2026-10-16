@@ -20,7 +20,7 @@ class HermesSyncEodCommand extends Command
     /**
      * The name and signature of the console command.
      */
-    protected $signature = 'hermes:sync-eod {--trigger=cli : Trigger type (cli, scheduled, manual)} {--force : Abaikan validasi hari bursa / finalitas waktu}';
+    protected $signature = 'hermes:sync-eod {--trigger=cli : Trigger type (cli, scheduled, manual)} {--force : Abaikan validasi hari bursa / finalitas waktu} {--no-telegram : Jangan kirim notifikasi ke Telegram}';
 
     /**
      * The console command description.
@@ -34,7 +34,8 @@ class HermesSyncEodCommand extends Command
         HermesAdapterService $adapter,
         AiMarketAnalysisService $aiService,
         BeiCalendarService $calendar,
-        PostHorizonEvaluatorService $evaluator
+        PostHorizonEvaluatorService $evaluator,
+        \App\Services\TelegramNotificationService $telegram
     ) {
         $startTime = microtime(true);
         $trigger = $this->option('trigger') ?: 'cli';
@@ -170,6 +171,19 @@ class HermesSyncEodCommand extends Command
                 ],
             ]);
 
+            // 9. Kirim Ringkasan Laporan ke Telegram
+            if (!$this->option('no-telegram')) {
+                $this->line("5. Mengirim ringkasan laporan ke Telegram @Info_BosKuu_bot...");
+                $tgResult = $telegram->sendEodNotification($run, $analysis);
+                if ($tgResult['status'] === 'sent') {
+                    $this->info("   -> Notifikasi Telegram terkirim sukses (Log ID: {$tgResult['log_id']}).");
+                } elseif ($tgResult['status'] === 'skipped_duplicate') {
+                    $this->line("   -> " . $tgResult['message']);
+                } else {
+                    $this->warn("   -> Pengiriman Telegram gagal: " . ($tgResult['error'] ?? 'Unknown error') . " (Hasil analisis tetap tersimpan aman).");
+                }
+            }
+
             $this->info("=== PIPELINE EOD SELESAI SUKSES DALAM {$duration} DETIK ===");
             $lock->release();
             return Command::SUCCESS;
@@ -182,23 +196,11 @@ class HermesSyncEodCommand extends Command
                 'error_message' => $e->getMessage(),
             ]);
 
-            // Catat log error dengan hash deduplikasi (cooldown 6 jam untuk error yang sama)
-            $errorHash = sha1($e->getMessage() . $e->getFile() . $e->getLine());
-            $recentErr = NotificationLog::where('message_hash', $errorHash)
-                ->where('created_at', '>=', now()->subHours(6))
-                ->first();
-
-            if (!$recentErr) {
-                NotificationLog::create([
-                    'channel' => 'telegram',
-                    'destination' => 'admin_error_alert',
-                    'analysis_run_id' => $run->id,
-                    'message_hash' => $errorHash,
-                    'message_payload' => "ERROR PIPELINE EOD [{$runId}]: " . $e->getMessage(),
-                    'status' => 'failed',
-                    'error_message' => $e->getMessage(),
-                ]);
-            }
+            // Kirim peringatan error dengan proteksi cooldown 6 jam
+            $telegram->sendErrorAlert($e->getMessage(), [
+                'run_id' => $runId,
+                'source' => 'HermesSyncEodCommand',
+            ]);
 
             $this->error("=== PIPELINE EOD GAGAL: " . $e->getMessage() . " ===");
             $lock->release();

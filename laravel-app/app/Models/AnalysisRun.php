@@ -18,4 +18,9 @@ class AnalysisRun extends Model
     {
         return $this->hasMany(MarketAnalysis::class);
     }
+
+    public function marketAnalysis()
+    {
+        return $this->hasOne(MarketAnalysis::class)->latestOfMany();
+    }
 }

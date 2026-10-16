@@ -105,6 +105,41 @@ class SystemHealthService
     }
 
     /**
+     * Check Telegram Gateway channel via Hermes CLI.
+     */
+    public function checkTelegramChannel(): array
+    {
+        $lastLog = \App\Models\NotificationLog::where('channel', 'telegram')->latest()->first();
+        $isCliAvailable = false;
+        
+        try {
+            $cmd = PHP_OS_FAMILY === 'Windows' ? 'where hermes' : 'which hermes';
+            $output = shell_exec($cmd);
+            $isCliAvailable = !empty($output);
+        } catch (\Throwable $e) {
+            $isCliAvailable = false;
+        }
+
+        $status = $isCliAvailable ? 'healthy' : 'degraded';
+
+        $result = [
+            'component' => 'telegram_channel',
+            'status' => $status,
+            'latency_ms' => 0,
+            'details' => [
+                'bot' => '@Info_BosKuu_bot',
+                'cli_available' => $isCliAvailable,
+                'last_sent_at' => $lastLog && $lastLog->status === 'sent' ? $lastLog->sent_at : null,
+                'last_status' => $lastLog ? $lastLog->status : 'none',
+            ],
+            'checked_at' => now(),
+        ];
+
+        SystemHealthCheck::create($result);
+        return $result;
+    }
+
+    /**
      * Run all health checks.
      */
     public function checkAll(): array
@@ -113,6 +148,7 @@ class SystemHealthService
             'database' => $this->checkDatabase(),
             'ai_model' => $this->checkAiModel(),
             'hermes_agent' => $this->checkHermesAgent(),
+            'telegram_channel' => $this->checkTelegramChannel(),
         ];
     }
 }

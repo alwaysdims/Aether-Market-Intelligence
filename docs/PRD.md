@@ -184,4 +184,9 @@ Pengguna utama sistem adalah Pengembang/Operator Kuantitatif Tunggal yang mengop
   * Post-Horizon Evaluator (`PostHorizonEvaluatorService` & `hermes:evaluate-horizon`): evaluasi akurasi prediksi AI setelah 5 hari bursa.
   * Otomasi Scheduler Windows: Task Scheduler, batch script `run_eod_pipeline.bat`, proteksi mutex lock, dan cooldown deduplikasi error.
   * Integrasi metrik evaluasi & jadwal operasional pada dashboard Blade.
-- **Fase 4 (Mendatang):** Evaluasi performa out-of-sample forward paper trading EXP-04 setelah akumulasi 30 transaksi tertutup dan pengiriman ringkasan Telegram idempotent.
+- **Fase 4 (Selesai):**
+  * Integrasi Notifikasi Telegram EOD (`TelegramNotificationService`): format baku, finalitas data pasar, status AI/fallback, dan disclaimer.
+  * Idempotensi & Anti-Spam: deduplikasi hash per run, mutex lock, cooldown error alert 6 jam, dan pelacakan status log.
+  * AI Quality Control: pemisahan metrik AI valid vs fallback, batas eksplisit pergerakan (+0.5% / -0.5%), dan proteksi immutability prediksi.
+  * End-to-End Test Suite: 33 feature tests Laravel, 6 unit test adapter, dan 64 unit test engine quant lama (100% lulus).
+- **Fase 5 (Mendatang):** Evaluasi performa out-of-sample forward paper trading EXP-04 setelah akumulasi 30 transaksi tertutup di bursa riil.

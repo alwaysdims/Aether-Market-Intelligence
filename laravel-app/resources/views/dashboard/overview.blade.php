@@ -3,7 +3,7 @@
 @section('content')
 <div class="space-y-6">
     <!-- Top System Health Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
         <!-- PostgreSQL Card -->
         <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-center justify-between">
             <div>
@@ -46,12 +46,26 @@
             </div>
         </div>
 
+        <!-- Telegram Notification Card -->
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-center justify-between">
+            <div>
+                <p class="text-xs text-slate-400 uppercase font-semibold">Telegram Bot</p>
+                <p class="text-lg font-bold {{ ($notificationStats['sent'] ?? 0) > 0 ? 'text-emerald-400' : 'text-sky-400' }}">
+                    @Info_BosKuu
+                </p>
+                <p class="text-xs text-slate-500">Terkirim: {{ $notificationStats['sent'] ?? 0 }} &bull; Gagal: {{ $notificationStats['failed'] ?? 0 }}</p>
+            </div>
+            <div class="w-10 h-10 rounded-full bg-sky-500/10 text-sky-400 flex items-center justify-center text-lg">
+                ✈️
+            </div>
+        </div>
+
         <!-- News Processed Card -->
         <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex items-center justify-between">
             <div>
                 <p class="text-xs text-slate-400 uppercase font-semibold">Berita Diproses</p>
                 <p class="text-lg font-bold text-sky-400">{{ $newsCountToday }}</p>
-                <p class="text-xs text-slate-500">{{ $activeDataSources }} sumber data aktif</p>
+                <p class="text-xs text-slate-500">{{ $activeDataSources }} sumber aktif</p>
             </div>
             <div class="w-10 h-10 rounded-full bg-sky-500/10 text-sky-400 flex items-center justify-center text-lg">
                 📰

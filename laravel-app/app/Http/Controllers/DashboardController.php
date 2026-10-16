@@ -8,6 +8,7 @@ use App\Models\MarketSnapshot;
 use App\Models\NewsItem;
 use App\Models\MarketAnalysis;
 use App\Models\AnalysisRun;
+use App\Models\NotificationLog;
 use App\Models\PromptTemplate;
 use App\Models\SystemHealthCheck;
 use App\Models\PostHorizonEvaluation;
@@ -49,6 +50,12 @@ class DashboardController extends Controller
         $isEodFinal = $this->calendar->isEodFinal();
         $evalMetrics = $this->evaluator->getMetricsSummary();
         $recentEvals = PostHorizonEvaluation::latest('decision_date')->take(5)->get();
+        $lastNotification = NotificationLog::latest()->first();
+        $notificationStats = [
+            'sent' => NotificationLog::where('status', 'sent')->count(),
+            'failed' => NotificationLog::where('status', 'failed')->count(),
+            'pending' => NotificationLog::where('status', 'pending')->count(),
+        ];
 
         return view('dashboard.overview', compact(
             'health',
@@ -61,7 +68,9 @@ class DashboardController extends Controller
             'latestSnapshot',
             'isEodFinal',
             'evalMetrics',
-            'recentEvals'
+            'recentEvals',
+            'lastNotification',
+            'notificationStats'
         ));
     }
 

@@ -22,7 +22,7 @@ Platform intelijen pasar modal Indonesia (Bursa Efek Indonesia / BEI) berbasis i
 | **BEI Trading Calendar Service**| `Implemented` | Validasi hari bursa resmi 2026 dan finalitas candle EOD (>= 16:00 WIB). |
 | **Post-Horizon Evaluator (+5D)**| `Implemented` | Pelacakan dan evaluasi akurasi prediksi AI terhadap return 5 hari bursa berikutnya. |
 | **Windows Scheduler Automation**| `Implemented` | Task Scheduler & batch script otomatisasi pada 16:05 WIB dengan proteksi mutex. |
-| **Telegram Bridge Idempotency**| `Planned` | Notifikasi ringkasan pasar dari Laravel memanfaatkan Hermes CLI sender. |
+| **Telegram Bridge Idempotency**| `Implemented` | Notifikasi ringkasan pasar dari Laravel memanfaatkan Hermes CLI sender dengan proteksi deduplikasi, mutex lock, dan cooldown. |
 
 ---
 
