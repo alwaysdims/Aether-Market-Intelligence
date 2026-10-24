@@ -1,20 +1,30 @@
 # Root gitignore
-laravel-app/vendor/
-laravel-app/node_modules/
-laravel-app/.env
-laravel-app/.env.backup
-laravel-app/.env.production
-laravel-app/storage/*.key
-laravel-app/storage/framework/cache/*
-laravel-app/storage/framework/sessions/*
-laravel-app/storage/framework/views/*
-laravel-app/storage/logs/*
-laravel-app/public/storage
-laravel-app/public/build
-laravel-app/public/hot
+dashboard/vendor/
+dashboard/node_modules/
+dashboard/.env
+dashboard/.env.backup
+dashboard/.env.production
+dashboard/storage/*.key
+dashboard/storage/framework/cache/*
+dashboard/storage/framework/sessions/*
+dashboard/storage/framework/views/*
+dashboard/storage/logs/*
+dashboard/public/storage
+dashboard/public/build
+dashboard/public/hot
 .phpunit.result.cache
 *.log
 __pycache__/
 *.pyc
 .DS_Store
 Thumbs.db
+
+# Root storage and database backups
+storage/
+*.sql
+data/
+logs/
+
+# Quant engine independent repository
+quant-engine/
+

@@ -1,240 +1,144 @@
 # Aether Market Intelligence ⚡
 
 <p align="center">
-  <img src="laravel-app/public/images/logo.png" alt="Aether Market Intelligence Logo" width="128" height="128" style="border-radius: 20px;">
+  <img src="dashboard/public/images/logo.png" alt="Aether Market Intelligence Logo" width="128" height="128" style="border-radius: 20px;">
 </p>
 
 Platform intelijen pasar modal Indonesia (Bursa Efek Indonesia / BEI) berbasis integrasi web dashboard, mesin analitik kuantitatif Python (Hermes Stock Agent), model penalaran AI Gemini 3.8 Flash High, dan notifikasi Telegram terpadu.
 
 **Repositori Resmi:** [https://github.com/alwaysdims/Aether-Market-Intelligence](https://github.com/alwaysdims/Aether-Market-Intelligence)  
 
-> ⚠️ **DISCLAIMER RISET & BATASAN SISTEM:**  
-> Sistem ini dibuat semata-mata untuk tujuan riset kuantitatif, otomasi pengolahan data pasar, dan evaluasi strategi perdagangan saham secara simulasi (paper trading). Sistem **TIDAK TERHUBUNG DENGAN BROKER LIVE**, **TIDAK MENGIRIM ORDER SUNGGUHAN**, dan **TIDAK MENJAMIN KEUNTUNGAN FINANSIAL**. Seluruh pengujian strategi masa lalu membuktikan model machine learning murni memiliki ekspektasi negatif setelah memperhitungkan biaya transaksi ritel BEI.
+> ⚠️ **DISCLAIMER RISET, BATASAN SISTEM & ETIKA AUDIT:**  
+> 1. Sistem ini dibuat untuk tujuan riset kuantitatif, otomasi pengolahan data pasar, dan evaluasi strategi perdagangan saham secara simulasi (paper trading). Sistem **TIDAK TERHUBUNG DENGAN BROKER LIVE**, **TIDAK MENGIRIM ORDER SUNGGUHAN**, dan **TIDAK MENJAMIN KEUNTUNGAN FINANSIAL**.  
+> 2. **Audit Evaluasi Historis:** 30 evaluasi historis dengan target 21 Oktober 2026 berstatus *rule-based fallback non-directional* (`unclear`) dan dihasilkan dari 3 batch pengujian pada bar acuan yang sama (14 Oktober 2026). Hasil evaluasi ini berstatus `neutral` dan **TIDAK BOLEH** diklaim sebagai bukti akurasi model AI atau sebagai 30 observasi independen.
 
 ---
 
-## 1. Status Fitur Sistem
+## 1. Struktur Folder Konsolidasi
 
-| Fitur / Komponen | Status | Deskripsi |
-|---|---|---|
-| **Laravel Control Plane** | `Implemented` | Dashboard Blade, PostgreSQL 16 connection, 8 core tables, health service. |
-| **Blade Views Dashboard** | `Implemented` | Overview, Market Monitor, News & Events, AI History, Health, Settings. |
-| **System Health API** | `Implemented` | Real-time diagnostic endpoint di `/api/health` untuk DB, AI router, dan Python path. |
-| **Prompt Template Versioning**| `Implemented` | Model Eloquent dan tabel berindeks unik `code + version` untuk prompt LLM. |
-| **Hermes Python Engine** | `Implemented` | EOD market scanner, VPA accumulation logic, dan paper trading engine di `E:\hermes-stock-agent`. |
-| **Frozen Forward Paper Trading**| `Implemented` | Simulasi portofolio EXP-01 vs EXP-04 dengan akuntansi kas riil dan filter gap. |
-| **Hermes CLI Adapter** | `Implemented` | Adapter Python di `services/hermes_adapter.py` untuk jembatan aman ke Laravel. |
-| **AI News Ingestion Pipeline** | `Implemented` | Abstraksi konektor berita resmi IDX dan inferensi LLM via 9router lokal (:20128). |
-| **BEI Trading Calendar Service**| `Implemented` | Validasi hari bursa resmi 2026 dan finalitas candle EOD (>= 16:00 WIB). |
-| **Post-Horizon Evaluator (+5D)**| `Implemented` | Pelacakan dan evaluasi akurasi prediksi AI terhadap return 5 hari bursa berikutnya. |
-| **Windows Scheduler Automation**| `Implemented` | Task Scheduler & batch script otomatisasi pada 16:05 WIB dengan proteksi mutex. |
-| **Telegram Bridge Idempotency**| `Implemented` | Notifikasi ringkasan pasar dari Laravel memanfaatkan Hermes CLI sender dengan proteksi deduplikasi, mutex lock, dan cooldown. |
-| **Operational Daily Monitor**  | `Implemented` | Perintah CLI `php artisan hermes:monitor` untuk audit 6 pilar operasional waktu nyata. |
-| **Out-of-Sample EXP-04 Audit**  | `Implemented` | Audit terverifikasi portofolio beku EXP-01 vs EXP-04 (SHA256: `3f5d2ecd...`), isolasi kas Rp500.000 riil. |
+Seluruh pengembangan, operasi, dan demo dijalankan dari root tunggal `E:\Aether-Market-Intelligence`:
 
----
-
-## 2. Arsitektur Tiga Komponen
-
-Sistem mengintegrasikan tiga pilar modular tanpa ketergantungan melingkar (*no circular dependency*):
-1. **Laravel Control Plane (`laravel-app/`):** Web monitoring lokal, manajemen database PostgreSQL, pengelolaan prompt template, serta penjadwalan proses.
-2. **Hermes Stock Agent (`E:\hermes-stock-agent/`):** Mesin Python independen untuk kalkulasi teknikal, broker summary bandarmologi, serta simulator paper trading.
-3. **Bot Telegram (`@Info_BosKuu_bot`):** Kanal notifikasi resmi langsung ke operator menggunakan Hermes Gateway CLI.
-
-### Diagram Alur Data Sistem (Mermaid)
-
-```mermaid
-flowchart TD
-    subgraph MarketData [Pasar Modal BEI]
-        YF[Yahoo Finance Daily EOD]
-        IA[Index Alpha Broker Summary]
-        IDX[Feed Berita Resmi IDX]
-    end
-
-    subgraph HermesCore [Hermes Stock Agent - Python]
-        DC[Data Collector & Indicators]
-        AC[Accumulation & VPA Scanner]
-        PT[Forward Paper Trading Engine\nEXP-01 vs EXP-04]
-    end
-
-    subgraph ServiceLayer [Services / Adapter Bridge]
-        HA[hermes_adapter.py\nCLI Subprocess JSON Contract]
-    end
-
-    subgraph LaravelControlPlane [Laravel Web Dashboard]
-        DB[(PostgreSQL 16\nproject-bot)]
-        HS[SystemHealthService]
-        UI[Blade Views + Tailwind + Alpine]
-        AIC[AI Reasoning Service]
-    end
-
-    subgraph AIRouter [Local AI Endpoint]
-        NineRouter[9router :20128\nag/gemini-3.8-flash-high]
-    end
-
-    subgraph TelegramGateway [Telegram Notification]
-        Bot[Hermes Send CLI\n@Info_BosKuu_bot]
-    end
-
-    YF --> DC
-    IA --> AC
-    DC --> PT
-    AC --> HA
-    PT --> HA
-
-    IDX --> AIC
-    HA --> LaravelControlPlane
-    LaravelControlPlane --> DB
-    AIC --> NineRouter
-    NineRouter --> AIC
-    AIC --> DB
-    DB --> UI
-    HS --> UI
-
-    LaravelControlPlane -.-> Bot
+```text
+E:\Aether-Market-Intelligence/
+├── dashboard/                  # Laravel Control Plane (Blade, Eloquent, API, Web UI)
+│   ├── app/Console/Commands/   # HermesSyncEod, HermesEvaluateHorizon, HermesMonitor, HermesBackfillSnapshots
+│   ├── app/Services/           # HermesAdapterService, PostHorizonEvaluatorService, BeiCalendarService, SystemHealthService
+│   ├── tests/Feature/          # EvaluatorRecoveryTest, EodIngestionHardeningTest, AiMarketAnalysisProvenanceTest
+│   └── ...
+├── services/                   # Python Interop Adapter (Jembatan CLI JSON Contract)
+│   ├── hermes_adapter.py       # Auto-download Yahoo Finance, EOD validator, dynamic engine resolution
+│   └── test_hermes_adapter.py  # 9 Unit test adapter
+├── quant-engine/               # Core Hermes Stock Agent Engine (Riset Kuantitatif & Simulator)
+│   ├── src/                    # Backtester, paper_trading_engine, calendar_utils, feature_engineering
+│   ├── tests/                  # 64 pytest test suite
+│   ├── data/raw_daily/         # Baseline 1.391 bar (hingga 14 Okt 2026) - TERPISAH & STERIL
+│   └── .git/                   # Git repository mandiri
+├── data/                       # Data operasional dashboard & adapter
+│   └── raw_daily/              # 1.398 bar (hingga 23 Okt 2026) untuk 10 saham aktif IDX
+├── scripts/                    # Runner dan utilitas operasional Windows
+│   ├── start_dashboard.bat     # Launcher web server localhost:8000 (aman, hanya web)
+│   ├── check_system.bat        # Diagnostic 6 pilar read-only (nol tulis, nol request AI)
+│   ├── run_eod_pipeline.bat    # Hardened runner EOD otomatis (dipanggil Task Scheduler)
+│   └── run_scheduler.bat       # Runner scheduler:run
+├── run_eod_pipeline.bat        # Root launcher wrapper
+├── logs/                       # Log eksekusi root (scheduler_eod.log)
+├── reports/                    # Seluruh laporan evaluasi dan audit historis
+├── docs/                       # Dokumentasi arsitektur, panduan presentasi, dan git
+└── README.md
 ```
 
 ---
 
-## 3. Struktur Direktori Aktual
+## 2. Status Fitur Terverifikasi
 
+| Komponen / Fitur | Status | Deskripsi Hasil Verifikasi |
+| :--- | :---: | :--- |
+| **Laravel Control Plane** | `PASS` | 73 feature & unit test lulus (249 assertions). Database testing terisolasi di `:memory:`. |
+| **Python Adapter Bridge** | `PASS` | 9 unit test lulus. Validasi OHLCV, auto-download multi-ticker, dynamic path engine. |
+| **Quant Engine (EXP-04)** | `PASS` | 64 pytest lulus. Akuntansi kas non-negatif, zero same-bar event inversion, lot sizing BEI. |
+| **Data Pasar Operasional** | `PASS` | 130 snapshot EOD tersimpan di PostgreSQL (termasuk 10 bar final 21 Okt 2026). |
+| **Post-Horizon Evaluator** | `PASS` | 30 record target 21 Okt dievaluasi `neutral` (`actual_price_date` tepat 21 Okt). 10 record target 27 Okt tetap `pending`. |
+| **Windows Task Scheduler**| `PASS` | Task `\HermesMarketIntelligence_EOD` aktif menunjuk `E:\Aether-Market-Intelligence\scripts\run_eod_pipeline.bat`. |
+| **Sistem AI Governance**   | `PASS` | Mode operasional aman `AI_LIVE_INFERENCE_ENABLED=false` aktif. Zero biaya, zero request ke 9Router. |
+
+---
+
+## 3. Langkah Menjalankan Demo Presentasi
+
+Untuk keperluan presentasi dosen atau pengujian lokal:
+
+### 1. Menjalankan Web Dashboard:
+Cukup klik ganda atau jalankan melalui terminal:
+```cmd
+E:\Aether-Market-Intelligence\scripts\start_dashboard.bat
 ```
-E:\Project-bot\
-├── docs\
-│   ├── architecture.md             # Blueprint arsitektur dan skema database
-│   ├── contracts.md                # Spesifikasi kontrak baku JSON
-│   ├── installation.md             # Petunjuk setup lingkungan
-│   ├── PRD.md                      # Product Requirements Document
-│   └── STOCK_ANALYSIS_AND_TRAINING.md # Metodologi kuantitatif & audit ML
-├── laravel-app\                    # Aplikasi Laravel 13 Control Plane
-│   ├── app\
-│   │   ├── Http\Controllers\DashboardController.php
-│   │   ├── Models\                 # 8 Model Eloquent terindeks
-│   │   └── Services\SystemHealthService.php
-│   ├── database\migrations\        # Skema migrasi database PostgreSQL
-│   ├── resources\views\dashboard\  # Template Blade antarmuka web
-│   └── tests\Feature\DashboardTest.php
-├── services\                       # Adapter Python & konektor integrasi
-│   └── hermes_adapter.py           # Jembatan JSON ke E:\hermes-stock-agent
-├── .gitignore                      # Git ignore aman (anti kebocoran secret)
-└── README.md                       # Dokumentasi utama proyek
+Buka browser pada: **`http://localhost:8000`**
+
+### 2. Memeriksa Diagnostik Sistem (Read-Only):
+Jalankan script pemeriksaan cepat tanpa risiko modifikasi data atau inferensi berbayar:
+```cmd
+E:\Aether-Market-Intelligence\scripts\check_system.bat
+```
+
+Panduan lengkap skenario presentasi per halaman dapat dibaca di:
+👉 **[`docs/PANDUAN_PRESENTASI.md`](docs/PANDUAN_PRESENTASI.md)**
+
+---
+
+## 4. Hasil Pengujian Otomatis (146/146 PASS)
+
+Semua pengujian pada ketiga pilar modular berhasil dijalankan dengan hasil **100% Lulus**:
+- **Laravel PHPUnit:** 73 tests passed, 249 assertions (`dashboard/`)
+- **Python Adapter:** 9 tests passed (`services/`)
+- **Quant Engine Pytest:** 64 tests passed (`quant-engine/`)
+- **Total:** 146 tests passed.
+
+Untuk menjalankan seluruh tes:
+```bash
+# 1. Tes Dashboard Laravel
+cd E:\Aether-Market-Intelligence\dashboard && php artisan test
+
+# 2. Tes Adapter Python
+cd E:\Aether-Market-Intelligence\services && python test_hermes_adapter.py
+
+# 3. Tes Quant Engine
+cd E:\Aether-Market-Intelligence\quant-engine && python -m pytest tests/
 ```
 
 ---
 
-## 4. Stack Teknologi & Persyaratan Sistem
+## 5. Konfigurasi Task Scheduler Windows
 
-- **Sistem Operasi:** Windows 11 (64-bit)
-- **PHP:** 8.3.7 (Ekstensi aktif: `pdo_pgsql`, `pgsql`, `curl`, `mbstring`, `openssl`)
-- **Composer:** 2.8.4
-- **Node.js:** v26.7.0 (npm 11.19.0)
-- **Database:** PostgreSQL 16.1 (Database: `project-bot`, Host: `127.0.0.1:5432`)
-- **Python:** 3.14.7 (Pustaka: `pandas`, `yfinance`, `scikit-learn`, `pytest`)
-- **AI Engine:** `ag/gemini-3.8-flash-high` pada router lokal `http://127.0.0.1:20128/v1`
-- **Kanal Notifikasi:** Bot Telegram `@Info_BosKuu_bot` via Hermes Gateway
+Jadwal sinkronisasi EOD bursa otomatis terdaftar pada Windows Task Scheduler:
+- **Nama Task:** `\HermesMarketIntelligence_EOD`
+- **Status:** `Ready`
+- **Jadwal:** Setiap hari bursa (Senin – Jumat) pukul 16:05:00 WIB
+- **Target Action:** `E:\Aether-Market-Intelligence\scripts\run_eod_pipeline.bat`
+- **Pengaturan Daya:** `DisallowStartIfOnBatteries = False`, `StopIfGoingOnBatteries = False`, `WakeToRun = True`, `StartWhenAvailable = True`.
 
 ---
 
-## 5. Panduan Instalasi & Konfigurasi
+## 6. Prosedur Rollback Terpisah
 
-### A. Konfigurasi Lingkungan (`.env`)
-Salin file `.env.example` di dalam `laravel-app/`:
-```bash
-cd E:/Project-bot/laravel-app
-cp .env.example .env
-php artisan key:generate
-```
+Sistem memisahkan mekanisme rollback menjadi 3 komponen independen:
 
-Pastikan variabel database PostgreSQL terkonfigurasi dengan kredensial lokal Anda:
-```ini
-APP_NAME="Aether Market Intelligence"
-APP_ENV=local
-APP_KEY=base64:...
-APP_DEBUG=true
-APP_URL=http://localhost:8000
-
-DB_CONNECTION=pgsql
-DB_HOST=127.0.0.1
-DB_PORT=5432
-DB_DATABASE=project-bot
-DB_USERNAME=postgres
-DB_PASSWORD=your_secure_password_here
-
-HERMES_PYTHON_PATH="C:/Users/ASUS/AppData/Local/hermes/toolchains/python/python.exe"
-HERMES_PROJECT_PATH="E:/hermes-stock-agent"
-AI_ROUTER_ENDPOINT="http://127.0.0.1:20128/v1"
-AI_MODEL_ID="ag/gemini-3.8-flash-high"
-```
-
-### B. Migrasi dan Seeder Database
-Jalankan migrasi tabel PostgreSQL dan data awal data sources serta prompt template:
-```bash
-cd E:/Project-bot/laravel-app
-php artisan migrate
-php artisan db:seed --class=HermesMarketIntelligenceSeeder
-```
+1. **Rollback Kode:**
+   Folder lama `E:\Project-bot` dan `E:\hermes-stock-agent` dipertahankan utuh sebagai cadangan sementara. Pengguna dapat kembali ke folder lama kapan saja.
+2. **Rollback Task Scheduler:**
+   Jalankan perintah berikut di PowerShell jika ingin mengembalikan task ke folder lama:
+   ```powershell
+   $service = New-Object -ComObject("Schedule.Service"); $service.Connect(); $task = $service.GetFolder("\").GetTask("HermesMarketIntelligence_EOD"); $def = $task.Definition; $def.Actions.Item(1).Path = "E:\Project-bot\run_eod_pipeline.bat"; $def.Actions.Item(1).WorkingDirectory = "E:\Project-bot"; $service.GetFolder("\").RegisterTaskDefinition("HermesMarketIntelligence_EOD", $def, 4, $null, $null, 3)
+   ```
+3. **Rollback Database PostgreSQL:**
+   Pulihkan snapshot database sebelum eksekusi backfill:
+   ```bash
+   psql.exe -h 127.0.0.1 -p 5432 -U postgres -d project-bot -f "E:\backups_pre_consolidation_20261021\project_bot_backup_20261024_211314.sql"
+   ```
 
 ---
 
-## 6. Cara Menjalankan Sistem
-
-### A. Menjalankan Dashboard Laravel
-```bash
-cd E:/Project-bot/laravel-app
-php artisan serve
-```
-Aplikasi dapat dibuka melalui peramban web pada: **`http://localhost:8000`**
-
-### B. Menjalankan Pengujian Otomatis (Test Suite)
-Untuk menjalankan feature test Laravel:
-```bash
-cd E:/Project-bot/laravel-app
-php artisan test
-```
-*Status Terkini: 44 tests passing (139 assertions).*
-
-Untuk menjalankan test suite adapter Python:
-```bash
-cd E:/Project-bot/services
-python test_hermes_adapter.py
-```
-*Status Terkini: 6 unit tests passing.*
-
-Untuk menjalankan test suite kuantitatif pada Hermes Stock Agent:
-```bash
-cd E:/hermes-stock-agent
-python -m pytest tests/
-```
-*Status Terkini: 64 master tests passing.*
-
-### C. Audit & Monitoring Operasional Real-Time
-Jalankan perintah audit komprehensif 6 pilar operasional:
-```bash
-cd E:/Project-bot/laravel-app
-php artisan hermes:monitor
-```
-
-### D. Memeriksa Status Kesehatan Sistem
-Periksa via HTTP endpoint:
-```bash
-curl http://localhost:8000/api/health
-```
-Atau buka tab **System Health** pada navigasi web dashboard.
-
----
-
-## 7. Model AI & Keamanan Kredensial
-
-1. **Model Terkunci:** Sistem dikunci pada model **`ag/gemini-3.8-flash-high`** melalui endpoint lokal `http://127.0.0.1:20128/v1`. Sistem dilarang mengganti model secara otomatis.
-2. **Zero Secret Exposure:** File `.env` dikecualikan secara mutlak dari version control melalui `.gitignore`. Kredensial tidak pernah dicetak dalam log, prompt teks, view dashboard, maupun laporan hasil.
-
----
-
-## 8. Referensi Dokumentasi Lengkap
-
-- [Dokumen Spesifikasi Produk (PRD.md)](docs/PRD.md)
-- [Metodologi Analisis Saham & Training Model (STOCK_ANALYSIS_AND_TRAINING.md)](docs/STOCK_ANALYSIS_AND_TRAINING.md)
-- [Panduan Operasional & Penjadwalan Windows (WINDOWS_OPERATIONS.md)](docs/WINDOWS_OPERATIONS.md)
-- [Arsitektur Sistem (architecture.md)](docs/architecture.md)
-- [Kontrak Baku JSON (contracts.md)](docs/contracts.md)
-- [Panduan Instalasi Detail (installation.md)](docs/installation.md)
+## 7. Referensi Dokumentasi
+- [Panduan Presentasi & Demo Dosen](docs/PANDUAN_PRESENTASI.md)
+- [Panduan Manajemen Git Dual-Repo](docs/GIT_MANAGEMENT.md)
+- [Panduan Restart & Startup Server](docs/PANDUAN_RESTART_DAN_STARTUP.md)
+- [Laporan Audit & Evaluasi Terakhir](reports/consolidation_and_evaluator_recovery.md)
