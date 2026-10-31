@@ -137,8 +137,31 @@ Sistem memisahkan mekanisme rollback menjadi 3 komponen independen:
 
 ---
 
-## 7. Referensi Dokumentasi
+## 7. Referensi Dokumentasi & Laporan Audit
+- [Laporan Akhir Tahap I: Database PostgreSQL, Pemantauan 14 Hari & Telegram Dua Arah (reports/TAHAP_I_FINAL_REPORT.md)](reports/TAHAP_I_FINAL_REPORT.md)
+- [Audit Arsitektur & Analisis Gap Tahap I (reports/TAHAP_I_GAP_ANALYSIS.md)](reports/TAHAP_I_GAP_ANALYSIS.md)
+- [Siklus Hidup Prediksi & Kontrak Status (docs/PREDICTION_LIFECYCLE.md)](docs/PREDICTION_LIFECYCLE.md)
+- [Integrasi Telegram Dua Arah & Protokol Interaksi (docs/TELEGRAM_TWO_WAY.md)](docs/TELEGRAM_TWO_WAY.md)
+- [Pemantauan Pasar Bursa & Deteksi Event (docs/MARKET_MONITORING.md)](docs/MARKET_MONITORING.md)
+- [Panduan Restart, Pemulihan Sistem & Rollback (docs/RESTART_AND_RECOVERY.md)](docs/RESTART_AND_RECOVERY.md)
+- [Laporan Akhir Tahap H: Data Forward, Rezim Pasar & Prediksi Bayangan (reports/ml/TAHAP_H_FINAL_REPORT.md)](reports/ml/TAHAP_H_FINAL_REPORT.md)
+- [Status Pengumpulan Data Forward Harian (reports/data/forward_collection_status.md)](reports/data/forward_collection_status.md)
+- [Analisis Deteksi Rezim Pasar IHSG (reports/ml/market_regime_analysis.md)](reports/ml/market_regime_analysis.md)
+- [Ablation Study Makroekonomi & Rezim (reports/ml/macro_ablation.md)](reports/ml/macro_ablation.md)
+- [Protokol Prediksi Bayangan & Evaluasi Horizon (reports/ml/shadow_prediction_protocol.md)](reports/ml/shadow_prediction_protocol.md)
+- [Laporan Akhir Tahap G: Integritas Backtest, Ekspansi Data & Prediksi (reports/ml/TAHAP_G_FINAL_REPORT.md)](reports/ml/TAHAP_G_FINAL_REPORT.md)
+- [Audit Integritas Backtest & Rekonsiliasi Kas (reports/ml/backtest_integrity_audit.md)](reports/ml/backtest_integrity_audit.md)
+- [Audit Validasi Temporal & Walk-Forward Overlap (reports/ml/temporal_validation_audit.md)](reports/ml/temporal_validation_audit.md)
+- [Laporan Feature Ablation Study (reports/ml/feature_ablation.md)](reports/ml/feature_ablation.md)
+- [Laporan Perbandingan Model Tahap G (reports/ml/tahap_g_model_comparison.md)](reports/ml/tahap_g_model_comparison.md)
+- [Analisis Prediksi Selektif & Target 90% (reports/ml/selective_prediction_analysis.md)](reports/ml/selective_prediction_analysis.md)
+- [Validasi Sinyal Berita & Disiplin Point-in-Time (reports/news/news_signal_validation.md)](reports/news/news_signal_validation.md)
+- [Registri Sumber Data Gratis Rp0 (docs/DATA_SOURCES.md)](docs/DATA_SOURCES.md)
+- [Kamus Data & Spesifikasi Provenance (docs/DATA_DICTIONARY.md)](docs/DATA_DICTIONARY.md)
+- [Protokol Eksperimen Machine Learning (docs/ML_EXPERIMENT_PROTOCOL.md)](docs/ML_EXPERIMENT_PROTOCOL.md)
+- [Laporan Audit & Reproduksi ML Lama (reports/ml/baseline_reproduction.md)](reports/ml/baseline_reproduction.md)
+- [Laporan Audit Kualitas Data EOD (reports/ml/data_quality_audit.md)](reports/ml/data_quality_audit.md)
 - [Panduan Presentasi & Demo Dosen](docs/PANDUAN_PRESENTASI.md)
 - [Panduan Manajemen Git Dual-Repo](docs/GIT_MANAGEMENT.md)
 - [Panduan Restart & Startup Server](docs/PANDUAN_RESTART_DAN_STARTUP.md)
-- [Laporan Audit & Evaluasi Terakhir](reports/consolidation_and_evaluator_recovery.md)
+- [Laporan Konsolidasi & Evaluator Recovery](reports/consolidation_and_evaluator_recovery.md)

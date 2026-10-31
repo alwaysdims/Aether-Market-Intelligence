@@ -1,0 +1,98 @@
+{
+  "experiment_id": "EXP-03",
+  "created_at": "2026-10-28T02:40:00+07:00",
+  "status": "COMPLETED",
+  "objective": "3-Class Classification (UP / NEUTRAL / DOWN) with ATR-14 adaptive barrier (1.5 * ATR14 / Close_t)",
+  "clean_folds": [
+    {
+      "fold": 1,
+      "train_end": "2022-12-31",
+      "val_start": "2023-01-01",
+      "val_end": "2023-12-31",
+      "test_start": "2024-01-01",
+      "test_end": "2024-12-31"
+    },
+    {
+      "fold": 2,
+      "train_end": "2023-12-31",
+      "val_start": "2024-01-01",
+      "val_end": "2024-12-31",
+      "test_start": "2025-01-01",
+      "test_end": "2025-12-31"
+    },
+    {
+      "fold": 3,
+      "train_end": "2024-12-31",
+      "val_start": "2025-01-01",
+      "val_end": "2025-12-31",
+      "test_start": "2026-01-01",
+      "test_end": "2026-10-16"
+    }
+  ],
+  "total_unique_oof_samples": 6602,
+  "unique_decision_dates": 661,
+  "date_range": [
+    "2024-01-02",
+    "2026-10-16"
+  ],
+  "sample_reconciliation": {
+    "raw_rows": 13936,
+    "valid_features_exp01": 13736,
+    "clean_features_subset_b": 13686,
+    "target_available": 13593,
+    "target_missing": 93,
+    "neutral_3064_in_exp01": "22.3063% of 13736 (was reported as 22.31%)",
+    "neutral_3069_in_exp02r_clean": "22.6561% of 13546 (clarified discrepancy)"
+  },
+  "feature_subset": [
+    "ret_1",
+    "ret_3",
+    "ret_5",
+    "ema9_ratio",
+    "ema20_ratio",
+    "ema_spread",
+    "rsi14",
+    "atr14_ratio",
+    "rvol20",
+    "dist_support20",
+    "dist_resistance20",
+    "volatility20",
+    "bench_ret_1",
+    "bench_ret_5",
+    "rel_ret_1",
+    "rel_ret_5"
+  ],
+  "models": [
+    "Random_Forest",
+    "Hist_Gradient_Boosting",
+    "Baseline_Always_Neutral",
+    "Baseline_Train_Majority"
+  ],
+  "class_distribution_overall": {
+    "DOWN_0": 1796,
+    "NEUTRAL_1": 9825,
+    "UP_2": 1972
+  },
+  "bootstrap_method": "Paired Block Bootstrap by Date (block_size=5, 1000 resamples)",
+  "results_summary": {
+    "Baseline_Always_Neutral": {
+      "mean_accuracy": 0.7022,
+      "mean_bal_acc": 0.3333,
+      "mean_macro_f1": 0.2754
+    },
+    "Hist_Gradient_Boosting": {
+      "mean_accuracy": 0.553,
+      "mean_bal_acc": 0.3445,
+      "mean_macro_f1": 0.3425,
+      "directional_precision": 0.1626,
+      "directional_coverage": 0.286
+    },
+    "Random_Forest": {
+      "mean_accuracy": 0.3919,
+      "mean_bal_acc": 0.3463,
+      "mean_macro_f1": 0.3164,
+      "directional_precision": 0.1588,
+      "directional_coverage": 0.575
+    }
+  }
+}

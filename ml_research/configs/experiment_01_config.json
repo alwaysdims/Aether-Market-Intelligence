@@ -1,0 +1,50 @@
+{
+  "experiment_id": "EXP-01",
+  "date": "2026-10-28",
+  "objective": "Predict 5-day trading return direction: (Close_{t+5} - Close_t) / Close_t > 0",
+  "models": {
+    "Majority_Class_Baseline": {
+      "type": "ZeroRule",
+      "constant_class": 0
+    },
+    "Logistic_Regression_L2": {
+      "type": "LogisticRegression",
+      "C": 0.1,
+      "max_iter": 500,
+      "random_state": 42
+    },
+    "Hist_Gradient_Boosting": {
+      "type": "HistGradientBoostingClassifier",
+      "max_iter": 60,
+      "min_samples_leaf": 30,
+      "random_state": 42
+    },
+    "Random_Forest_Reproduced": {
+      "type": "RandomForestClassifier",
+      "n_estimators": 100,
+      "max_depth": 6,
+      "min_samples_leaf": 20,
+      "random_state": 42
+    }
+  },
+  "feature_columns": [
+    "ret_1",
+    "ret_3",
+    "ret_5",
+    "ema9_ratio",
+    "ema20_ratio",
+    "ema_spread",
+    "rsi14",
+    "atr14_ratio",
+    "rvol20",
+    "dist_support20",
+    "dist_resistance20",
+    "volatility20"
+  ],
+  "split_rules": {
+    "train": "2021-02-01 to 2023-12-20 (purged 5 days gap before 2023-12-31)",
+    "validation": "2024-01-01 to 2024-12-19 (purged 5 days gap before 2024-12-31)",
+    "test": "2025-01-02 to 2026-10-16"
+  },
+  "preprocessor": "StandardScaler fitted strictly on Train"
+}

@@ -1,0 +1,106 @@
+{
+  "experiment_id": "EXP-01",
+  "dataset_version": "v1.0",
+  "snapshot_created_at": "2026-10-28T01:05:00+07:00",
+  "source_data": "E:\\Aether-Market-Intelligence\\data\\raw_immutable\\*_raw_2026-10-23.csv",
+  "source_hashes": {
+    "ARTO": "2486c0362366aff34d27e58d019c0340c05bb706d0f415876e1f7a2b76413dfd",
+    "ASII": "53109d6ee67cf91cbf7fdbe29bc72ad9d677d5411cdee590ff9472c5cf9171cf",
+    "BBCA": "20914672d94c1daf371ca5e260f444bdce8a293b599cb6ef4a728ac5d77b3034",
+    "BBNI": "70f6caec25524dc72469031628f12e966799c02f84eb569df24fda5ec12c47db",
+    "BBRI": "ea1d76aae88dd9c62955488a10d7eeda804a8ff0f1968613fdfb848c83787bf0",
+    "BMRI": "9859fa1465520ebbfe6ab628e1f147408f72bc20eb8a636807c4faa8d87e0c9a",
+    "MAPI": "794b3c451c735e5088fa7d12391078acd8eefb7bc15b55ee7b60f50eafe02e00",
+    "MEDC": "62d1196d60ebf85c4beeaeb2d3d13a708053a234b2543df20316cfcb2bc59bbf",
+    "SMRA": "3188d94c23d9f1d6c3ff3d886b513ba492cd318a9e11cc6be8b69da452ac3b4f",
+    "TLKM": "f2d09a121b114c243f8b71e3a06d4ba9888af4637d6cb33265e2eb55635ccdad"
+  },
+  "sqlite_path": "E:\\Aether-Market-Intelligence\\ml_research\\datasets\\idx_top10_features_v1.sqlite",
+  "sqlite_sha256": "b1c92704590e177a3d80afdfbde5d9627230a799a1a685cf6bdb357c492f363b",
+  "csv_path": "E:\\Aether-Market-Intelligence\\ml_research\\datasets\\idx_top10_features_v1.csv",
+  "csv_sha256": "52410a57f22633908ba0e07356daf4ff04c32a6eab907a838af285496ab03806",
+  "tickers": [
+    "ARTO",
+    "ASII",
+    "BBCA",
+    "BBNI",
+    "BBRI",
+    "BMRI",
+    "MAPI",
+    "MEDC",
+    "SMRA",
+    "TLKM"
+  ],
+  "total_rows": 13736,
+  "date_range": [
+    "2021-02-01",
+    "2026-10-23"
+  ],
+  "splits": {
+    "TRAIN": {
+      "rows": 7030,
+      "date_range": [
+        "2021-02-01",
+        "2023-12-20"
+      ]
+    },
+    "PURGED_TRAIN_GAP": {
+      "rows": 50,
+      "dates": [
+        "2023-12-21",
+        "2023-12-22",
+        "2023-12-27",
+        "2023-12-28",
+        "2023-12-29"
+      ]
+    },
+    "VALIDATION": {
+      "rows": 2319,
+      "date_range": [
+        "2024-01-02",
+        "2024-12-19"
+      ]
+    },
+    "PURGED_VAL_GAP": {
+      "rows": 50,
+      "dates": [
+        "2024-12-20",
+        "2024-12-23",
+        "2024-12-24",
+        "2024-12-27",
+        "2024-12-30"
+      ]
+    },
+    "TEST": {
+      "rows": 4237,
+      "date_range": [
+        "2025-01-02",
+        "2026-10-16"
+      ]
+    },
+    "FORWARD_UNRESOLVED": {
+      "rows": 50,
+      "date_range": [
+        "2026-10-19",
+        "2026-10-23"
+      ]
+    }
+  },
+  "feature_columns": [
+    "ret_1",
+    "ret_3",
+    "ret_5",
+    "ema9_ratio",
+    "ema20_ratio",
+    "ema_spread",
+    "rsi14",
+    "atr14_ratio",
+    "rvol20",
+    "dist_support20",
+    "dist_resistance20",
+    "volatility20"
+  ],
+  "target_column": "target_direction",
+  "horizon_days": 5,
+  "target_definition": "Binary 1 if (Close_{t+5} - Close_t) / Close_t > 0 else 0"
+}

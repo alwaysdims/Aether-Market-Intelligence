@@ -36,14 +36,15 @@ class BeiCalendarService
     public function isTradingDay(CarbonInterface|string $date): bool
     {
         $dt = $date instanceof CarbonInterface ? $date->copy() : Carbon::parse($date);
-        
+
         // Weekend check: Saturday = 6, Sunday = 0 in Carbon dayOfWeek
         if ($dt->isWeekend()) {
             return false;
         }
 
         $dateStr = $dt->format('Y-m-d');
-        return !in_array($dateStr, self::BEI_HOLIDAYS_2026, true);
+
+        return ! in_array($dateStr, self::BEI_HOLIDAYS_2026, true);
     }
 
     /**
@@ -53,7 +54,7 @@ class BeiCalendarService
     {
         $dt = ($now ?? Carbon::now('Asia/Jakarta'))->copy()->timezone('Asia/Jakarta');
 
-        if (!$this->isTradingDay($dt)) {
+        if (! $this->isTradingDay($dt)) {
             return false;
         }
 
@@ -69,7 +70,7 @@ class BeiCalendarService
         $dt = $date ? ($date instanceof CarbonInterface ? $date->copy() : Carbon::parse($date)) : Carbon::now('Asia/Jakarta');
         $curr = $dt->copy()->addDay()->startOfDay();
 
-        while (!$this->isTradingDay($curr)) {
+        while (! $this->isTradingDay($curr)) {
             $curr->addDay();
         }
 
@@ -84,7 +85,22 @@ class BeiCalendarService
         $dt = $date ? ($date instanceof CarbonInterface ? $date->copy() : Carbon::parse($date)) : Carbon::now('Asia/Jakarta');
         $curr = $dt->copy()->startOfDay();
 
-        while (!$this->isTradingDay($curr)) {
+        while (! $this->isTradingDay($curr)) {
+            $curr->subDay();
+        }
+
+        return $curr;
+    }
+
+    /**
+     * Get the immediate previous official BEI trading day strictly before the given date.
+     */
+    public function getPreviousTradingDay(CarbonInterface|string|null $date = null): Carbon
+    {
+        $dt = $date ? ($date instanceof CarbonInterface ? $date->copy() : Carbon::parse($date)) : Carbon::now('Asia/Jakarta');
+        $curr = $dt->copy()->subDay()->startOfDay();
+
+        while (! $this->isTradingDay($curr)) {
             $curr->subDay();
         }
 
@@ -127,6 +143,86 @@ class BeiCalendarService
 
         // Otherwise find next trading day at 16:05 WIB
         $nextDay = $this->getNextTradingDay($dt);
+
         return $nextDay->setTime(16, 5, 0)->timezone('Asia/Jakarta');
+    }
+
+    /**
+     * Get detailed market session status (Session 1, Midday Break, Session 2, Closed).
+     */
+    public function getMarketSessionStatus(?CarbonInterface $now = null): array
+    {
+        $dt = ($now ?? Carbon::now('Asia/Jakarta'))->copy()->timezone('Asia/Jakarta');
+
+        if (! $this->isTradingDay($dt)) {
+            return [
+                'is_open' => false,
+                'session' => 'CLOSED',
+                'description' => 'Pasar Bursa Tutup (Akhir Pekan atau Hari Libur Resmi BEI)',
+                'timestamp_wib' => $dt->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        $isFriday = ($dt->dayOfWeek === Carbon::FRIDAY);
+        $timeStr = $dt->format('H:i');
+
+        // Pre-opening: 08:45 - 08:59 WIB
+        if ($timeStr >= '08:45' && $timeStr < '09:00') {
+            return [
+                'is_open' => true,
+                'session' => 'PRE_OPENING',
+                'description' => 'Sesi Pra-Pembukaan Bursa (08:45 - 08:59 WIB)',
+                'timestamp_wib' => $dt->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        // Sesi 1
+        $s1End = $isFriday ? '11:30' : '12:00';
+        if ($timeStr >= '09:00' && $timeStr < $s1End) {
+            return [
+                'is_open' => true,
+                'session' => 'SESSION_1',
+                'description' => "Sesi Perdagangan Pagi (09:00 - {$s1End} WIB)",
+                'timestamp_wib' => $dt->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        // Jeda Siang
+        $s2Start = $isFriday ? '14:00' : '13:30';
+        if ($timeStr >= $s1End && $timeStr < $s2Start) {
+            return [
+                'is_open' => false,
+                'session' => 'MIDDAY_BREAK',
+                'description' => "Jeda Istirahat Siang Bursa ({$s1End} - {$s2Start} WIB)",
+                'timestamp_wib' => $dt->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        // Sesi 2
+        if ($timeStr >= $s2Start && $timeStr < '15:45') {
+            return [
+                'is_open' => true,
+                'session' => 'SESSION_2',
+                'description' => "Sesi Perdagangan Siang/Sore ({$s2Start} - 15:45 WIB)",
+                'timestamp_wib' => $dt->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        // Pra-penutupan & Pasca-penutupan: 15:45 - 16:15 WIB
+        if ($timeStr >= '15:45' && $timeStr <= '16:15') {
+            return [
+                'is_open' => false,
+                'session' => 'POST_CLOSING',
+                'description' => 'Sesi Pembentukan Harga Penutupan & Pasca-Penutupan (15:45 - 16:15 WIB)',
+                'timestamp_wib' => $dt->format('Y-m-d H:i:s'),
+            ];
+        }
+
+        return [
+            'is_open' => false,
+            'session' => 'CLOSED',
+            'description' => 'Pasar Bursa Tutup di Luar Jam Operasional',
+            'timestamp_wib' => $dt->format('Y-m-d H:i:s'),
+        ];
     }
 }

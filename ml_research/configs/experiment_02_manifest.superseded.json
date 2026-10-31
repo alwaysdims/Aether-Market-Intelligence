@@ -1,0 +1,99 @@
+{
+  "experiment_id": "EXP-02",
+  "created_at": "2026-10-28T01:30:00+07:00",
+  "hypothesis": "Evaluasi nilai tambah benchmark relatif (IHSG EW) dan aktivitas volume ternormalisasi terhadap akurasi arah 5 hari bursa",
+  "feature_subsets": {
+    "A_Base12": [
+      "ret_1",
+      "ret_3",
+      "ret_5",
+      "ema9_ratio",
+      "ema20_ratio",
+      "ema_spread",
+      "rsi14",
+      "atr14_ratio",
+      "rvol20",
+      "dist_support20",
+      "dist_resistance20",
+      "volatility20"
+    ],
+    "B_BenchmarkRel16": [
+      "ret_1",
+      "ret_3",
+      "ret_5",
+      "ema9_ratio",
+      "ema20_ratio",
+      "ema_spread",
+      "rsi14",
+      "atr14_ratio",
+      "rvol20",
+      "dist_support20",
+      "dist_resistance20",
+      "volatility20",
+      "bench_ret_1",
+      "bench_ret_5",
+      "rel_ret_1",
+      "rel_ret_5"
+    ],
+    "C_ActivityVol19": [
+      "ret_1",
+      "ret_3",
+      "ret_5",
+      "ema9_ratio",
+      "ema20_ratio",
+      "ema_spread",
+      "rsi14",
+      "atr14_ratio",
+      "rvol20",
+      "dist_support20",
+      "dist_resistance20",
+      "volatility20",
+      "bench_ret_1",
+      "bench_ret_5",
+      "rel_ret_1",
+      "rel_ret_5",
+      "vol_zscore20",
+      "move_5_to_atr",
+      "vol_ratio_5_20"
+    ]
+  },
+  "models": [
+    "Logistic_Regression",
+    "Hist_Gradient_Boosting",
+    "Random_Forest"
+  ],
+  "validation_method": "3-Fold Non-Overlapping Walk-Forward with Strict Calendar Purging",
+  "bootstrap_method": "Block Bootstrap by Trading Date (1,000 resamples)",
+  "targets": {
+    "target_dir": "Binary directional: 1 if fwd_ret_5 > 0 else 0",
+    "target_material": "Material directional with neutral zone: 1 if fwd_ret_5 > +1%, 0 if < -1%, neutral [-1%, +1%] excluded"
+  },
+  "folds": [
+    {
+      "fold": 1,
+      "train_end": "2022-12-31",
+      "val_start": "2023-01-01",
+      "val_end": "2023-12-31",
+      "test_start": "2024-01-01",
+      "test_end": "2024-12-31"
+    },
+    {
+      "fold": 2,
+      "train_end": "2023-12-31",
+      "val_start": "2024-01-01",
+      "val_end": "2024-12-31",
+      "test_start": "2025-01-01",
+      "test_end": "2025-12-31"
+    },
+    {
+      "fold": 3,
+      "train_end": "2024-12-31",
+      "val_start": "2025-01-01",
+      "val_end": "2025-06-30",
+      "test_start": "2025-07-01",
+      "test_end": "2026-10-16"
+    }
+  ],
+  "status": "SUPERSEDED_BY_EXP02R",
+  "superseded_reason": "Fold 2 and Fold 3 had overlapping test windows (2025-H2 duplicate evaluation)"
+}

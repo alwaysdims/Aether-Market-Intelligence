@@ -1,0 +1,491 @@
+diff --git a/README.md b/README.md
+index 96d1a7a..cad415b 100644
+--- a/README.md
++++ b/README.md
+@@ -137,8 +137,31 @@ Sistem memisahkan mekanisme rollback menjadi 3 komponen independen:
+ 
+ ---
+ 
+-## 7. Referensi Dokumentasi
++## 7. Referensi Dokumentasi & Laporan Audit
++- [Laporan Akhir Tahap I: Database PostgreSQL, Pemantauan 14 Hari & Telegram Dua Arah (reports/TAHAP_I_FINAL_REPORT.md)](reports/TAHAP_I_FINAL_REPORT.md)
++- [Audit Arsitektur & Analisis Gap Tahap I (reports/TAHAP_I_GAP_ANALYSIS.md)](reports/TAHAP_I_GAP_ANALYSIS.md)
++- [Siklus Hidup Prediksi & Kontrak Status (docs/PREDICTION_LIFECYCLE.md)](docs/PREDICTION_LIFECYCLE.md)
++- [Integrasi Telegram Dua Arah & Protokol Interaksi (docs/TELEGRAM_TWO_WAY.md)](docs/TELEGRAM_TWO_WAY.md)
++- [Pemantauan Pasar Bursa & Deteksi Event (docs/MARKET_MONITORING.md)](docs/MARKET_MONITORING.md)
++- [Panduan Restart, Pemulihan Sistem & Rollback (docs/RESTART_AND_RECOVERY.md)](docs/RESTART_AND_RECOVERY.md)
++- [Laporan Akhir Tahap H: Data Forward, Rezim Pasar & Prediksi Bayangan (reports/ml/TAHAP_H_FINAL_REPORT.md)](reports/ml/TAHAP_H_FINAL_REPORT.md)
++- [Status Pengumpulan Data Forward Harian (reports/data/forward_collection_status.md)](reports/data/forward_collection_status.md)
++- [Analisis Deteksi Rezim Pasar IHSG (reports/ml/market_regime_analysis.md)](reports/ml/market_regime_analysis.md)
++- [Ablation Study Makroekonomi & Rezim (reports/ml/macro_ablation.md)](reports/ml/macro_ablation.md)
++- [Protokol Prediksi Bayangan & Evaluasi Horizon (reports/ml/shadow_prediction_protocol.md)](reports/ml/shadow_prediction_protocol.md)
++- [Laporan Akhir Tahap G: Integritas Backtest, Ekspansi Data & Prediksi (reports/ml/TAHAP_G_FINAL_REPORT.md)](reports/ml/TAHAP_G_FINAL_REPORT.md)
++- [Audit Integritas Backtest & Rekonsiliasi Kas (reports/ml/backtest_integrity_audit.md)](reports/ml/backtest_integrity_audit.md)
++- [Audit Validasi Temporal & Walk-Forward Overlap (reports/ml/temporal_validation_audit.md)](reports/ml/temporal_validation_audit.md)
++- [Laporan Feature Ablation Study (reports/ml/feature_ablation.md)](reports/ml/feature_ablation.md)
++- [Laporan Perbandingan Model Tahap G (reports/ml/tahap_g_model_comparison.md)](reports/ml/tahap_g_model_comparison.md)
++- [Analisis Prediksi Selektif & Target 90% (reports/ml/selective_prediction_analysis.md)](reports/ml/selective_prediction_analysis.md)
++- [Validasi Sinyal Berita & Disiplin Point-in-Time (reports/news/news_signal_validation.md)](reports/news/news_signal_validation.md)
++- [Registri Sumber Data Gratis Rp0 (docs/DATA_SOURCES.md)](docs/DATA_SOURCES.md)
++- [Kamus Data & Spesifikasi Provenance (docs/DATA_DICTIONARY.md)](docs/DATA_DICTIONARY.md)
++- [Protokol Eksperimen Machine Learning (docs/ML_EXPERIMENT_PROTOCOL.md)](docs/ML_EXPERIMENT_PROTOCOL.md)
++- [Laporan Audit & Reproduksi ML Lama (reports/ml/baseline_reproduction.md)](reports/ml/baseline_reproduction.md)
++- [Laporan Audit Kualitas Data EOD (reports/ml/data_quality_audit.md)](reports/ml/data_quality_audit.md)
+ - [Panduan Presentasi & Demo Dosen](docs/PANDUAN_PRESENTASI.md)
+ - [Panduan Manajemen Git Dual-Repo](docs/GIT_MANAGEMENT.md)
+ - [Panduan Restart & Startup Server](docs/PANDUAN_RESTART_DAN_STARTUP.md)
+-- [Laporan Audit & Evaluasi Terakhir](reports/consolidation_and_evaluator_recovery.md)
++- [Laporan Konsolidasi & Evaluator Recovery](reports/consolidation_and_evaluator_recovery.md)
+diff --git a/dashboard/app/Http/Controllers/DashboardController.php b/dashboard/app/Http/Controllers/DashboardController.php
+index 61d342d..a2af378 100644
+--- a/dashboard/app/Http/Controllers/DashboardController.php
++++ b/dashboard/app/Http/Controllers/DashboardController.php
+@@ -57,6 +57,18 @@ public function overview()
+             'pending' => NotificationLog::where('status', 'pending')->count(),
+         ];
+ 
++        // Tahap H: Shadow Prediction & Market Regime Integration
++        $shadowLedgerPath = base_path('../data/shadow_predictions/shadow_predictions_ledger.json');
++        $shadowPredictions = file_exists($shadowLedgerPath) ? json_decode(file_get_contents($shadowLedgerPath), true) : [];
++        $marketRegime = !empty($shadowPredictions) ? ($shadowPredictions[0]['market_regime'] ?? 'SIDEWAYS') : 'SIDEWAYS';
++        $shadowStats = [
++            'total' => count($shadowPredictions),
++            'pending' => collect($shadowPredictions)->where('evaluation_status', 'PENDING')->count(),
++            'evaluated' => collect($shadowPredictions)->where('evaluation_status', 'EVALUATED')->count(),
++            'no_signal' => collect($shadowPredictions)->where('signal_status', 'NO_SIGNAL')->count(),
++            'active_signal' => collect($shadowPredictions)->where('signal_status', 'ACTIVE_SIGNAL')->count(),
++        ];
++
+         return view('dashboard.overview', compact(
+             'health',
+             'lastRun',
+@@ -70,7 +82,10 @@ public function overview()
+             'evalMetrics',
+             'recentEvals',
+             'lastNotification',
+-            'notificationStats'
++            'notificationStats',
++            'shadowPredictions',
++            'marketRegime',
++            'shadowStats'
+         ));
+     }
+ 
+diff --git a/dashboard/app/Services/AiMarketAnalysisService.php b/dashboard/app/Services/AiMarketAnalysisService.php
+index aa5dfe7..099a004 100644
+--- a/dashboard/app/Services/AiMarketAnalysisService.php
++++ b/dashboard/app/Services/AiMarketAnalysisService.php
+@@ -16,15 +16,18 @@ class AiMarketAnalysisService
+     protected int $timeout;
+     protected int $maxTokens;
+     protected bool $liveInferenceEnabled;
++    protected bool $onDemandEnabled;
+ 
+     public function __construct()
+     {
+         $this->endpoint = rtrim(config('services.ai_router.endpoint', env('AI_ROUTER_ENDPOINT', 'http://127.0.0.1:20128/v1')), '/') . '/chat/completions';
+         $this->modelId = config('services.ai_router.model_id', env('AI_MODEL_ID', 'ag/gemini-3.8-flash-high'));
+         $this->apiKey = config('services.ai_router.api_key', env('AI_API_KEY', ''));
+-        $this->timeout = (int) config('services.ai_router.timeout', env('AI_ROUTER_TIMEOUT', 30));
+-        $this->maxTokens = (int) config('services.ai_router.max_tokens', env('AI_ROUTER_MAX_TOKENS', 2500));
+-        $this->liveInferenceEnabled = (bool) config('services.ai_router.live_inference_enabled', env('AI_LIVE_INFERENCE_ENABLED', false));
++        $this->timeout = (int) config('services.ai_router.timeout', env('AI_ROUTER_TIMEOUT', 25));
++        $this->maxTokens = (int) config('services.ai_router.max_tokens', env('AI_ROUTER_MAX_TOKENS', 600));
++        $this->liveInferenceEnabled = (bool) config('services.ai_router.eod_inference_enabled', env('AI_LIVE_INFERENCE_EOD_ENABLED', false))
++            || (bool) config('services.ai_router.live_inference_enabled', env('AI_LIVE_INFERENCE_ENABLED', false));
++        $this->onDemandEnabled = (bool) config('services.ai_router.on_demand_enabled', env('AI_LIVE_INFERENCE_ON_DEMAND_ENABLED', true));
+     }
+ 
+     /**
+@@ -182,4 +185,173 @@ public function buildFallbackAnalysis(
+             'validation_status' => 'fallback',
+         ]);
+     }
++
++    /**
++     * Generate grounded on-demand AI narrative explanation for a specific ticker based strictly on stored evidence.
++     */
++    public function generateOnDemandTickerExplanation(
++        string $ticker,
++        \App\Models\MarketObservation $obs,
++        ?\App\Models\PredictionSignal $sig = null,
++        ?\App\Models\EvidenceSnapshot $ev = null,
++        ?\App\Models\NewsItem $news = null
++    ): array {
++        $barDateStr = $obs->bar_date->format('Y-m-d');
++
++        // 1. Check if valid explanation for this ticker and bar already exists in DB (Deduplication / cache)
++        $existing = MarketAnalysis::whereJsonContains('structured_output->ticker', $ticker)
++            ->whereJsonContains('structured_output->bar_date', $barDateStr)
++            ->where('validation_status', 'valid_schema')
++            ->latest('id')
++            ->first();
++
++        if ($existing) {
++            return [
++                'success' => true,
++                'is_cached' => true,
++                'narrative' => $existing->market_regime_summary,
++                'analysis_id' => $existing->id,
++                'model' => $existing->model_name,
++                'usage' => $existing->structured_output['usage'] ?? null,
++                'latency_ms' => $existing->structured_output['latency_ms'] ?? 0
++            ];
++        }
++
++        // 2. Check on-demand feature flag and unit testing mode
++        if (!$this->onDemandEnabled || app()->runningUnitTests()) {
++            return [
++                'success' => false,
++                'fallback_reason' => 'Inferensi AI on-demand dinonaktifkan atau dalam mode unit testing.'
++            ];
++        }
++
++        // 3. Build strict evidence prompt
++        $priceRange = $obs->high_price - $obs->low_price;
++        $rangePct = $obs->low_price > 0 ? round(($priceRange / $obs->low_price) * 100, 2) : 0;
++        $changeBar = $obs->close_price - $obs->open_price;
++        $changeSign = $changeBar >= 0 ? "+" : "";
++        $changePct = $obs->open_price > 0 ? round(($changeBar / $obs->open_price) * 100, 2) : 0;
++        $volFmt = number_format($obs->volume, 0, ',', '.');
++        $barDateIndo = $obs->bar_date->format('d M Y');
++
++        $systemPrompt = "Anda adalah asisten kuantitatif Aether Market Intelligence.\n"
++            . "Tugas Anda: Memberikan penjelasan analisis naratif yang objektif, berbasis data faktual tersimpan untuk emiten yang diminta.\n\n"
++            . "ATURAN KETAT:\n"
++            . "1. DILARANG MENGARANG: Gunakan HANYA data harga, volume, tanggal, dan probabilitas yang diberikan dalam evidence. Dilarang mengarang target harga baru atau tanggal masa depan.\n"
++            . "2. PERTAHANKAN ABSTAIN (NO_SIGNAL): Status model ML adalah ABSTAIN. Anda DILARANG KERAS mengubah status abstain menjadi sinyal beli/jual atau rekomendasi spekulatif. Jelaskan bahwa keyakinan model berada di bawah ambang batas minimal 40.00% (Tau 0.70) sehingga model menolak berspekulasi guna melindungi modal.\n"
++            . "3. STRUKTUR JAWABAN (Pisahkan fakta, interpretasi, dan skenario):\n"
++            . "   • FAKTA PASAR TERLAPOR: Ringkasan pergerakan bar harga OHLC, volume, dan rentang harga.\n"
++            . "   • INTERPRETASI MODEL & STATUS ABSTAIN: Penjelasan mengapa probabilitas naik/turun berimbang dan model memilih abstain.\n"
++            . "   • SKENARIO DAMPAK & RISIKO: Potensi dinamika pasar tanpa rekomendasi beli/jual.\n"
++            . "4. FORMAT: Tulis dalam bahasa Indonesia yang ringkas, profesional, tanpa karakter markdown literal (*) atau (_). Gunakan bullet point (•).";
++
++        $userPrompt = "Berikut adalah evidence faktual dari database untuk emiten {$ticker}:\n"
++            . "• Emiten: {$ticker}\n"
++            . "• Tanggal Bar: {$barDateIndo} (EOD Final via {$obs->source})\n"
++            . "• Harga Penutupan: Rp " . number_format($obs->close_price, 2, ',', '.') . "\n"
++            . "• OHLC: Open Rp " . number_format($obs->open_price, 2, ',', '.') . " | High Rp " . number_format($obs->high_price, 2, ',', '.') . " | Low Rp " . number_format($obs->low_price, 2, ',', '.') . "\n"
++            . "• Volume: {$volFmt} lembar\n"
++            . "• Rentang Harga High-Low: Rp " . number_format($priceRange, 2, ',', '.') . " ({$rangePct}% rentang bar)\n"
++            . "• Perubahan vs Open: {$changeSign}Rp " . number_format($changeBar, 2, ',', '.') . " ({$changeSign}{$changePct}% vs Open bar {$barDateIndo})\n";
++
++        if ($sig) {
++            $pUpPct = round($sig->probability_up * 100, 2);
++            $pDownPct = round($sig->probability_down * 100, 2);
++            $confPct = round($sig->confidence_score * 100, 2);
++            $userPrompt .= "• Model ML: {$sig->model_name} ({$sig->model_version})\n"
++                . "• Sinyal ML: {$sig->signal_status} (Arah: {$sig->direction})\n"
++                . "• Estimasi Probabilitas: P(UP) {$pUpPct}% | P(DOWN) {$pDownPct}%\n"
++                . "• Confidence Score: {$confPct}% (Ambang batas minimal: 40,00% / Tau 0.70)\n"
++                . "• Alasan Abstain: {$sig->reason_for_abstain}\n";
++        } else {
++            $userPrompt .= "• Model ML: Belum ada rekod sinyal spesifik untuk emiten ini.\n";
++        }
++
++        if ($news) {
++            $userPrompt .= "• Berita Terkini: [" . ($news->source_name ?: 'LKBN ANTARA') . "] " . $news->title . " — " . ($news->summary ?: '') . "\n";
++        } else {
++            $userPrompt .= "• Berita Terkini: Tidak ada berita tersimpan untuk emiten ini dalam 7 hari terakhir.\n";
++        }
++
++        $userPrompt .= "\nBerikan penjelasan analisis naratif terstruktur sesuai aturan di atas.";
++
++        // 4. Call 9router endpoint
++        $payload = [
++            'model' => $this->modelId,
++            'messages' => [
++                ['role' => 'system', 'content' => $systemPrompt],
++                ['role' => 'user', 'content' => $userPrompt]
++            ],
++            'max_tokens' => $this->maxTokens,
++            'temperature' => 0.2,
++            'stream' => false
++        ];
++
++        $t0 = microtime(true);
++        try {
++            $req = \Illuminate\Support\Facades\Http::timeout(18);
++            if (!empty($this->apiKey)) {
++                $req = $req->withToken($this->apiKey);
++            }
++            $resp = $req->post($this->endpoint, $payload);
++            $latencyMs = (int)round((microtime(true) - $t0) * 1000);
++
++            if ($resp->successful()) {
++                $content = $resp->json('choices.0.message.content');
++                $usage = $resp->json('usage');
++
++                if (!empty($content)) {
++                    // Create persistent DB record
++                    $run = AnalysisRun::create([
++                        'run_id' => 'ONDEMAND_' . $ticker . '_' . now()->format('Ymd_His'),
++                        'trigger_type' => 'telegram_on_demand',
++                        'status' => 'completed',
++                        'started_at' => now()->subMilliseconds($latencyMs),
++                        'completed_at' => now(),
++                    ]);
++
++                    $analysis = MarketAnalysis::create([
++                        'analysis_run_id' => $run->id,
++                        'prompt_template_id' => null,
++                        'model_name' => $this->modelId,
++                        'prompt_version' => '1.0.0-on-demand',
++                        'market_regime_summary' => trim($content),
++                        'impact_direction' => 'unclear',
++                        'impact_horizon' => 'multi_day',
++                        'confidence_score' => $sig ? $sig->confidence_score : 0.50,
++                        'structured_output' => [
++                            'ticker' => $ticker,
++                            'bar_date' => $barDateStr,
++                            'evidence_snapshot_id' => $ev ? $ev->id : ($sig ? $sig->evidence_snapshot_id : null),
++                            'latency_ms' => $latencyMs,
++                            'usage' => $usage,
++                            'model_version' => $this->modelId,
++                            'generated_narrative' => trim($content)
++                        ],
++                        'validation_status' => 'valid_schema'
++                    ]);
++
++                    return [
++                        'success' => true,
++                        'is_cached' => false,
++                        'narrative' => trim($content),
++                        'analysis_id' => $analysis->id,
++                        'model' => $this->modelId,
++                        'usage' => $usage,
++                        'latency_ms' => $latencyMs
++                    ];
++                }
++            }
++
++            return [
++                'success' => false,
++                'fallback_reason' => 'Router AI merespons dengan HTTP ' . $resp->status()
++            ];
++        } catch (\Throwable $e) {
++            return [
++                'success' => false,
++                'fallback_reason' => 'Koneksi ke AI router terputus: ' . $e->getMessage()
++            ];
++        }
++    }
+ }
+diff --git a/dashboard/app/Services/BeiCalendarService.php b/dashboard/app/Services/BeiCalendarService.php
+index 499e4f8..7bb9898 100644
+--- a/dashboard/app/Services/BeiCalendarService.php
++++ b/dashboard/app/Services/BeiCalendarService.php
+@@ -129,4 +129,83 @@ public function getNextScheduledRunTime(?CarbonInterface $now = null): Carbon
+         $nextDay = $this->getNextTradingDay($dt);
+         return $nextDay->setTime(16, 5, 0)->timezone('Asia/Jakarta');
+     }
++
++    /**
++     * Get detailed market session status (Session 1, Midday Break, Session 2, Closed).
++     */
++    public function getMarketSessionStatus(?CarbonInterface $now = null): array
++    {
++        $dt = ($now ?? Carbon::now('Asia/Jakarta'))->copy()->timezone('Asia/Jakarta');
++
++        if (!$this->isTradingDay($dt)) {
++            return [
++                'is_open' => false,
++                'session' => 'CLOSED',
++                'description' => 'Pasar Bursa Tutup (Akhir Pekan atau Hari Libur Resmi BEI)',
++                'timestamp_wib' => $dt->format('Y-m-d H:i:s')
++            ];
++        }
++
++        $isFriday = ($dt->dayOfWeek === Carbon::FRIDAY);
++        $timeStr = $dt->format('H:i');
++
++        // Pre-opening: 08:45 - 08:59 WIB
++        if ($timeStr >= '08:45' && $timeStr < '09:00') {
++            return [
++                'is_open' => true,
++                'session' => 'PRE_OPENING',
++                'description' => 'Sesi Pra-Pembukaan Bursa (08:45 - 08:59 WIB)',
++                'timestamp_wib' => $dt->format('Y-m-d H:i:s')
++            ];
++        }
++
++        // Sesi 1
++        $s1End = $isFriday ? '11:30' : '12:00';
++        if ($timeStr >= '09:00' && $timeStr < $s1End) {
++            return [
++                'is_open' => true,
++                'session' => 'SESSION_1',
++                'description' => "Sesi Perdagangan Pagi (09:00 - {$s1End} WIB)",
++                'timestamp_wib' => $dt->format('Y-m-d H:i:s')
++            ];
++        }
++
++        // Jeda Siang
++        $s2Start = $isFriday ? '14:00' : '13:30';
++        if ($timeStr >= $s1End && $timeStr < $s2Start) {
++            return [
++                'is_open' => false,
++                'session' => 'MIDDAY_BREAK',
++                'description' => "Jeda Istirahat Siang Bursa ({$s1End} - {$s2Start} WIB)",
++                'timestamp_wib' => $dt->format('Y-m-d H:i:s')
++            ];
++        }
++
++        // Sesi 2
++        if ($timeStr >= $s2Start && $timeStr < '15:45') {
++            return [
++                'is_open' => true,
++                'session' => 'SESSION_2',
++                'description' => "Sesi Perdagangan Siang/Sore ({$s2Start} - 15:45 WIB)",
++                'timestamp_wib' => $dt->format('Y-m-d H:i:s')
++            ];
++        }
++
++        // Pra-penutupan & Pasca-penutupan: 15:45 - 16:15 WIB
++        if ($timeStr >= '15:45' && $timeStr <= '16:15') {
++            return [
++                'is_open' => false,
++                'session' => 'POST_CLOSING',
++                'description' => 'Sesi Pembentukan Harga Penutupan & Pasca-Penutupan (15:45 - 16:15 WIB)',
++                'timestamp_wib' => $dt->format('Y-m-d H:i:s')
++            ];
++        }
++
++        return [
++            'is_open' => false,
++            'session' => 'CLOSED',
++            'description' => 'Pasar Bursa Tutup di Luar Jam Operasional',
++            'timestamp_wib' => $dt->format('Y-m-d H:i:s')
++        ];
++    }
+ }
+diff --git a/dashboard/config/services.php b/dashboard/config/services.php
+index e907b4c..3e70a0d 100644
+--- a/dashboard/config/services.php
++++ b/dashboard/config/services.php
+@@ -39,9 +39,19 @@
+         'endpoint' => env('AI_ROUTER_ENDPOINT', 'http://127.0.0.1:20128/v1'),
+         'model_id' => env('AI_MODEL_ID', 'ag/gemini-3.8-flash-high'),
+         'api_key' => env('AI_API_KEY', ''),
+-        'timeout' => (int) env('AI_ROUTER_TIMEOUT', 30),
+-        'max_tokens' => (int) env('AI_ROUTER_MAX_TOKENS', 2500),
++        'timeout' => (int) env('AI_ROUTER_TIMEOUT', 25),
++        'max_tokens' => (int) env('AI_ROUTER_MAX_TOKENS', 600),
+         'live_inference_enabled' => (bool) env('AI_LIVE_INFERENCE_ENABLED', false),
++        'on_demand_enabled' => (bool) env('AI_LIVE_INFERENCE_ON_DEMAND_ENABLED', true),
++        'eod_inference_enabled' => (bool) env('AI_LIVE_INFERENCE_EOD_ENABLED', false),
++    ],
++
++    'hermes' => [
++        'cli_command' => env('HERMES_CLI_COMMAND', 'hermes'),
++    ],
++
++    'telegram' => [
++        'chat_id' => env('TELEGRAM_CHAT_ID', '5923895922'),
+     ],
+ 
+ ];
+diff --git a/dashboard/resources/views/dashboard/overview.blade.php b/dashboard/resources/views/dashboard/overview.blade.php
+index 0d934ac..bdb0df3 100644
+--- a/dashboard/resources/views/dashboard/overview.blade.php
++++ b/dashboard/resources/views/dashboard/overview.blade.php
+@@ -94,17 +94,37 @@
+                     {{ $isEodFinal ? 'FINAL EOD (>= 16:00 WIB)' : 'BELUM FINAL / INTRADAY' }}
+                 </span>
+             </div>
++            <div>
++                <span class="text-slate-400 block">Rezim Pasar IHSG:</span>
++                <span class="font-bold px-2 py-0.5 rounded text-xs {{ $marketRegime === 'BULLISH' ? 'bg-emerald-500/20 text-emerald-400' : ($marketRegime === 'HIGH_VOLATILITY' ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-700 text-slate-300') }}">
++                    {{ $marketRegime }}
++                </span>
++            </div>
+             <div>
+                 <span class="text-slate-400 block">Tanggal Bar Terakhir:</span>
+                 <span class="text-slate-200 font-mono font-bold">{{ $latestSnapshot ? $latestSnapshot->bar_date->format('d M Y') : '-' }}</span>
+             </div>
+             <div>
+-                <span class="text-slate-400 block">Evaluasi 5 Hari Bursa:</span>
+-                <span class="text-sky-400 font-bold font-mono">{{ $evalMetrics['total_pending'] }} Pending / {{ $evalMetrics['total_evaluated'] }} Selesai</span>
++                <span class="text-slate-400 block">Shadow Prediction:</span>
++                <span class="text-sky-400 font-bold font-mono">{{ $shadowStats['no_signal'] }} NO_SIGNAL (Abstain)</span>
+             </div>
+         </div>
+     </div>
+ 
++    <!-- Research Mode & Safety Disclaimer Banner -->
++    <div class="bg-slate-900 border border-indigo-500/30 rounded-xl p-4 flex items-start space-x-3 text-xs">
++        <span class="text-xl">🛡️</span>
++        <div class="space-y-1">
++            <div class="flex items-center space-x-2">
++                <span class="font-bold text-indigo-400 uppercase tracking-wider">Mode Riset Prospektif (Research-Only Mode)</span>
++                <span class="px-2 py-0.5 rounded text-[10px] bg-indigo-500/20 text-indigo-300 font-semibold">ZERO LIVE BROKER ORDERS</span>
++            </div>
++            <p class="text-slate-400 leading-relaxed">
++                Seluruh probabilitas prediksi adalah estimasi statistik riset dan <strong>bukan jaminan keuntungan</strong>. Sistem menerapkan status default <strong>NO_SIGNAL (ABSTAIN)</strong> ketika tingkat keyakinan model di bawah ambang batas ($\tau < 0.70$). Data harga penutupan adalah data EOD final bursa BEI pukul 16:05 WIB, bukan data tick intraday realtime.
++            </p>
++        </div>
++    </div>
++
+     <!-- Warnings / Stale Sources Alert -->
+     @if($staleSources->isNotEmpty())
+         <div class="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex items-start space-x-3">
+diff --git a/dashboard/routes/console.php b/dashboard/routes/console.php
+index c665810..3366f94 100644
+--- a/dashboard/routes/console.php
++++ b/dashboard/routes/console.php
+@@ -23,3 +23,23 @@
+     ->timezone('Asia/Jakarta')
+     ->withoutOverlapping()
+     ->appendOutputTo(storage_path('logs/hermes_evaluator.log'));
++
++// Jadwal Pemantauan Pasar & Rekonsiliasi Expiry 14 Hari (Setiap Hari 00:05 & 16:20 WIB)
++Schedule::command('hermes:monitor-market')
++    ->dailyAt('16:20')
++    ->timezone('Asia/Jakarta')
++    ->withoutOverlapping(10)
++    ->appendOutputTo(storage_path('logs/hermes_monitoring.log'));
++
++Schedule::command('hermes:monitor-market')
++    ->dailyAt('00:05')
++    ->timezone('Asia/Jakarta')
++    ->withoutOverlapping(10)
++    ->appendOutputTo(storage_path('logs/hermes_monitoring.log'));
++
++// Jadwal Dispatcher Antrean Outbox Telegram (Setiap 5 Menit 24/7)
++Schedule::command('hermes:process-outbox --live')
++    ->everyFiveMinutes()
++    ->withoutOverlapping(5)
++    ->runInBackground()
++    ->appendOutputTo(storage_path('logs/hermes_outbox.log'));
+diff --git a/scripts/run_eod_pipeline.bat b/scripts/run_eod_pipeline.bat
+index 8e4a12c..5b507a6 100644
+--- a/scripts/run_eod_pipeline.bat
++++ b/scripts/run_eod_pipeline.bat
+@@ -53,6 +53,12 @@ if errorlevel 1 (
+ echo [START] EOD Pipeline: %date% %time% >> "%LOG_FILE%" 2>&1
+ echo =============================================================================== >> "%LOG_FILE%" 2>&1
+ 
++REM 1. Pengumpulan Data Forward Terverifikasi (Market, News, Macro)
++python "%ROOT_DIR%\services\forward_data_collector.py" >> "%LOG_FILE%" 2>&1
++if errorlevel 1 (
++    echo [%date% %time%] [WARNING] forward_data_collector menemui kendala minor, melanjutkan sync-eod >> "%ROOT_LOG_FILE%" 2>&1
++)
++
+ "%PHP_BIN%" artisan hermes:sync-eod --trigger=scheduled >> "%LOG_FILE%" 2>&1
+ set SYNC_EXIT=%errorlevel%
+ if %SYNC_EXIT% neq 0 (
+@@ -71,6 +77,14 @@ if %EVAL_EXIT% neq 0 (
+ )
+ echo [%date% %time%] [RUNNER] hermes:evaluate-horizon berhasil [exit code: 0] >> "%ROOT_LOG_FILE%" 2>&1
+ 
++REM 3. Pemantauan Pasar & Deteksi Expiry 14 Hari
++"%PHP_BIN%" artisan hermes:monitor-market >> "%LOG_FILE%" 2>&1
++echo [%date% %time%] [RUNNER] hermes:monitor-market selesai [exit code: %errorlevel%] >> "%ROOT_LOG_FILE%" 2>&1
++
++REM 4. Pemrosesan Antrean Outbox Telegram
++"%PHP_BIN%" artisan hermes:process-outbox --live >> "%LOG_FILE%" 2>&1
++echo [%date% %time%] [RUNNER] hermes:process-outbox selesai [exit code: %errorlevel%] >> "%ROOT_LOG_FILE%" 2>&1
++
+ echo [FINISH] EOD Pipeline Selesai Sukses: %date% %time% >> "%LOG_FILE%" 2>&1
+ echo [%date% %time%] [RUNNER] [FINISH] Task Scheduler EOD Pipeline selesai sukses [exit code: 0] >> "%ROOT_LOG_FILE%" 2>&1
+ exit /b 0

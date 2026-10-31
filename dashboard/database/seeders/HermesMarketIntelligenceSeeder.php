@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Services\DataSourceRegistryService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -12,43 +13,8 @@ class HermesMarketIntelligenceSeeder extends Seeder
      */
     public function run(): void
     {
-        // Default Data Sources
-        $sources = [
-            [
-                'name' => 'Yahoo Finance Daily EOD',
-                'type' => 'market_data',
-                'data_classification' => 'end_of_day',
-                'base_url' => 'https://query1.finance.yahoo.com/v8/finance/chart/',
-                'status' => 'active',
-                'last_success_at' => now(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'Index Alpha Broker Summary',
-                'type' => 'broker_summary',
-                'data_classification' => 'end_of_day',
-                'base_url' => 'https://api.indexalpha.id/stocks/broker-summary',
-                'status' => 'active',
-                'last_success_at' => now(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-            [
-                'name' => 'IDX Official Announcements & News',
-                'type' => 'news',
-                'data_classification' => 'delayed',
-                'base_url' => 'https://www.idx.co.id',
-                'status' => 'active',
-                'last_success_at' => now(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ],
-        ];
-
-        foreach ($sources as $source) {
-            DB::table('data_sources')->updateOrInsert(['name' => $source['name']], $source);
-        }
+        // Delegate Data Sources synchronization to DataSourceRegistryService
+        app(DataSourceRegistryService::class)->syncRegistry();
 
         // Default Prompt Template (Version 1.0.0)
         DB::table('prompt_templates')->updateOrInsert(

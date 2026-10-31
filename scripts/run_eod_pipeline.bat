@@ -53,6 +53,12 @@ if errorlevel 1 (
 echo [START] EOD Pipeline: %date% %time% >> "%LOG_FILE%" 2>&1
 echo =============================================================================== >> "%LOG_FILE%" 2>&1
 
+REM 1. Pengumpulan Data Forward Terverifikasi (Market, News, Macro)
+python "%ROOT_DIR%\services\forward_data_collector.py" >> "%LOG_FILE%" 2>&1
+if errorlevel 1 (
+    echo [%date% %time%] [WARNING] forward_data_collector menemui kendala minor, melanjutkan sync-eod >> "%ROOT_LOG_FILE%" 2>&1
+)
+
 "%PHP_BIN%" artisan hermes:sync-eod --trigger=scheduled >> "%LOG_FILE%" 2>&1
 set SYNC_EXIT=%errorlevel%
 if %SYNC_EXIT% neq 0 (
@@ -70,6 +76,19 @@ if %EVAL_EXIT% neq 0 (
     exit /b %EVAL_EXIT%
 )
 echo [%date% %time%] [RUNNER] hermes:evaluate-horizon berhasil [exit code: 0] >> "%ROOT_LOG_FILE%" 2>&1
+
+REM 3. Pemantauan Pasar & Deteksi Expiry 14 Hari
+"%PHP_BIN%" artisan hermes:monitor-market >> "%LOG_FILE%" 2>&1
+echo [%date% %time%] [RUNNER] hermes:monitor-market selesai [exit code: %errorlevel%] >> "%ROOT_LOG_FILE%" 2>&1
+
+REM 3b. Sinkronisasi Terkontrol Histori EOD & Broker Summary IDX Edge (Canary BBCA)
+"%PHP_BIN%" artisan hermes:sync-idx-edge-history BBCA --limit=20 >> "%LOG_FILE%" 2>&1
+"%PHP_BIN%" artisan hermes:sync-idx-edge-broker BBCA >> "%LOG_FILE%" 2>&1
+echo [%date% %time%] [RUNNER] hermes:sync-idx-edge-history & broker selesai >> "%ROOT_LOG_FILE%" 2>&1
+
+REM 4. Pemrosesan Antrean Outbox Telegram
+"%PHP_BIN%" artisan hermes:process-outbox --live >> "%LOG_FILE%" 2>&1
+echo [%date% %time%] [RUNNER] hermes:process-outbox selesai [exit code: %errorlevel%] >> "%ROOT_LOG_FILE%" 2>&1
 
 echo [FINISH] EOD Pipeline Selesai Sukses: %date% %time% >> "%LOG_FILE%" 2>&1
 echo [%date% %time%] [RUNNER] [FINISH] Task Scheduler EOD Pipeline selesai sukses [exit code: 0] >> "%ROOT_LOG_FILE%" 2>&1

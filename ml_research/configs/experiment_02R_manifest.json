@@ -1,0 +1,95 @@
+{
+  "experiment_id": "EXP-02R",
+  "created_at": "2026-10-28T02:00:00+07:00",
+  "status": "COMPLETED",
+  "clean_folds": [
+    {
+      "fold": 1,
+      "train_end": "2022-12-31",
+      "val_start": "2023-01-01",
+      "val_end": "2023-12-31",
+      "test_start": "2024-01-01",
+      "test_end": "2024-12-31"
+    },
+    {
+      "fold": 2,
+      "train_end": "2023-12-31",
+      "val_start": "2024-01-01",
+      "val_end": "2024-12-31",
+      "test_start": "2025-01-01",
+      "test_end": "2025-12-31"
+    },
+    {
+      "fold": 3,
+      "train_end": "2024-12-31",
+      "val_start": "2025-01-01",
+      "val_end": "2025-12-31",
+      "test_start": "2026-01-01",
+      "test_end": "2026-10-16"
+    }
+  ],
+  "total_unique_oof_samples": 6602,
+  "unique_decision_dates": 661,
+  "date_range": [
+    "2024-01-02",
+    "2026-10-16"
+  ],
+  "target_calendar_rule": "Strict 5th market session from BEI trading calendar",
+  "missing_target_cases": 43,
+  "missing_target_reason": "Historical trading calendar bar omission in data provider without corporate action evidence",
+  "universe": "Equal-Weight Basket of Top-10 Liquid BEI Issuers",
+  "paired_bootstrap_method": "Paired Block Bootstrap by Date (block_size=5, 1000 resamples)",
+  "results_summary": {
+    "Random_Forest": {
+      "mean_acc": 0.5334,
+      "ci_acc": [
+        0.5117,
+        0.5552
+      ],
+      "diff_vs_baseline": -0.0108,
+      "ci_diff": [
+        -0.0456,
+        0.0232
+      ],
+      "auc": 0.5299,
+      "ci_auc": [
+        0.5053,
+        0.5542
+      ]
+    },
+    "Hist_Gradient_Boosting": {
+      "mean_acc": 0.5351,
+      "ci_acc": [
+        0.5151,
+        0.5542
+      ],
+      "diff_vs_baseline": -0.0091,
+      "ci_diff": [
+        -0.0492,
+        0.0322
+      ],
+      "auc": 0.5342,
+      "ci_auc": [
+        0.5082,
+        0.5586
+      ]
+    },
+    "Logistic_Regression": {
+      "mean_acc": 0.5189,
+      "ci_acc": [
+        0.4949,
+        0.544
+      ],
+      "diff_vs_baseline": -0.0253,
+      "ci_diff": [
+        -0.056,
+        0.0039
+      ],
+      "auc": 0.4936,
+      "ci_auc": [
+        0.4664,
+        0.5189
+      ]
+    }
+  }
+}

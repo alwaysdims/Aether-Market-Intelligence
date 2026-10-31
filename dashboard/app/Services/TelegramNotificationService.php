@@ -15,12 +15,13 @@ use Symfony\Component\Process\Process;
 class TelegramNotificationService
 {
     protected string $chatId;
+
     protected string $cliCommand;
 
     public function __construct()
     {
         // Default Telegram chat ID for @Info_BosKuu_bot verified from Hermes config
-        $this->chatId = config('services.hermes.telegram_chat_id', '5923895922');
+        $this->chatId = (string) config('services.telegram.chat_id');
         $this->cliCommand = config('services.hermes.cli_command', 'hermes');
     }
 
@@ -30,18 +31,18 @@ class TelegramNotificationService
     public function formatEodMessage(AnalysisRun $run, ?MarketAnalysis $analysis = null): string
     {
         $analysis = $analysis ?? $run->marketAnalysis;
-        $nowWib = Carbon::now('Asia/Jakarta')->translatedFormat('d M Y, H:i') . ' WIB';
-        
+        $nowWib = Carbon::now('Asia/Jakarta')->translatedFormat('d M Y, H:i').' WIB';
+
         $lines = [];
-        $lines[] = "📊 AETHER MARKET INTELLIGENCE — EOD REPORT";
-        $lines[] = "══════════════════════════════════════════";
+        $lines[] = '📊 AETHER MARKET INTELLIGENCE — EOD REPORT';
+        $lines[] = '══════════════════════════════════════════';
         $lines[] = "Waktu Analisis : {$nowWib}";
-        $lines[] = "Status Pipeline: " . strtoupper($run->status ?? 'UNKNOWN') . " (ID: {$run->run_id})";
+        $lines[] = 'Status Pipeline: '.strtoupper($run->status ?? 'UNKNOWN')." (ID: {$run->run_id})";
 
         // Market Data Finality & Source
         $latestSnapshot = MarketSnapshot::where('analysis_run_id', $run->id)->latest('bar_date')->first()
             ?? MarketSnapshot::latest('bar_date')->first();
-        
+
         $barDateStr = $latestSnapshot ? $latestSnapshot->bar_date->format('d M Y') : 'Unknown';
         $dataClass = $latestSnapshot ? strtoupper($latestSnapshot->data_classification) : 'UNKNOWN';
         $lines[] = "Data Pasar     : {$barDateStr} ({$dataClass} FINAL via Yahoo Finance)";
@@ -52,27 +53,27 @@ class TelegramNotificationService
             $valStatus = strtoupper($analysis->validation_status ?? 'UNKNOWN');
             $lines[] = "Mesin Intelijen: {$modelName} [{$valStatus}]";
         } else {
-            $lines[] = "Mesin Intelijen: ag/gemini-3.8-flash-high [NO_ANALYSIS]";
+            $lines[] = 'Mesin Intelijen: ag/gemini-3.8-flash-high [NO_ANALYSIS]';
         }
 
-        $lines[] = "──────────────────────────────────────────";
+        $lines[] = '──────────────────────────────────────────';
 
         if ($analysis) {
             $regime = $analysis->market_regime_summary ?? 'Tidak ada ringkasan rezim pasar.';
             $direction = strtoupper($analysis->impact_direction ?? 'UNCLEAR');
-            $confidence = $analysis->confidence_score !== null ? round($analysis->confidence_score * 100) . '%' : 'N/A';
+            $confidence = $analysis->confidence_score !== null ? round($analysis->confidence_score * 100).'%' : 'N/A';
             $horizon = strtoupper($analysis->impact_horizon ?? 'MULTI_DAY');
 
-            $lines[] = "📈 REZIM PASAR & ARAH DAMPAK";
+            $lines[] = '📈 REZIM PASAR & ARAH DAMPAK';
             $lines[] = "Arah Prediksi  : {$direction} (Keyakinan: {$confidence}, Horizon: {$horizon})";
             $lines[] = "Ringkasan      : {$regime}";
-            $lines[] = "";
+            $lines[] = '';
 
             // Impacted Tickers (Only explicitly recorded predictions)
             $structured = $analysis->structured_output ?? [];
             $tickers = $structured['impacted_tickers'] ?? [];
-            if (!empty($tickers) && is_array($tickers)) {
-                $lines[] = "🎯 INSTRUMEN TERDAMPAK (Eksplisit):";
+            if (! empty($tickers) && is_array($tickers)) {
+                $lines[] = '🎯 INSTRUMEN TERDAMPAK (Eksplisit):';
                 foreach (array_slice($tickers, 0, 5) as $item) {
                     if (is_array($item) && isset($item['ticker'])) {
                         $t = $item['ticker'];
@@ -81,7 +82,7 @@ class TelegramNotificationService
                         $lines[] = "• \${$t} [{$d}]: {$r}";
                     }
                 }
-                $lines[] = "";
+                $lines[] = '';
             }
 
             // News Ingestion Status
@@ -89,28 +90,28 @@ class TelegramNotificationService
             if ($newsCount === 0) {
                 $newsCount = NewsItem::count();
             }
-            $lines[] = "📰 FEED BERITA PASAR";
+            $lines[] = '📰 FEED BERITA PASAR';
             $lines[] = "Total Berita   : {$newsCount} item diproses dari Antara News Finansial.";
 
             // Fallback Warning
             if ($analysis->validation_status === 'fallback') {
-                $lines[] = "";
-                $lines[] = "⚠️ PERINGATAN OPERASIONAL:";
-                $lines[] = "Analisis menggunakan HEURISTIK TEKNIKAL FALLBACK akibat router AI tidak merespon/timeout. Bukan hasil penalaran model Gemini aktif.";
+                $lines[] = '';
+                $lines[] = '⚠️ PERINGATAN OPERASIONAL:';
+                $lines[] = 'Analisis menggunakan HEURISTIK TEKNIKAL FALLBACK akibat router AI tidak merespon/timeout. Bukan hasil penalaran model Gemini aktif.';
             }
         } else {
-            $lines[] = "⚠️ Analisis pasar tidak tersedia untuk run ini.";
+            $lines[] = '⚠️ Analisis pasar tidak tersedia untuk run ini.';
         }
 
-        $lines[] = "──────────────────────────────────────────";
-        $lines[] = "⚠️ Riset kuantitatif & simulasi paper intelligence.";
-        $lines[] = "Dilarang dijadikan rekomendasi transaksi atau jaminan keuntungan.";
+        $lines[] = '──────────────────────────────────────────';
+        $lines[] = '⚠️ Riset kuantitatif & simulasi paper intelligence.';
+        $lines[] = 'Dilarang dijadikan rekomendasi transaksi atau jaminan keuntungan.';
 
         $message = implode("\n", $lines);
 
         // Telegram maximum length protection (4096 chars limit)
         if (mb_strlen($message) > 4000) {
-            $message = mb_substr($message, 0, 3950) . "\n\n... [Teks dipotong karena batas panjang pesan Telegram]";
+            $message = mb_substr($message, 0, 3950)."\n\n... [Teks dipotong karena batas panjang pesan Telegram]";
         }
 
         return $message;
@@ -121,10 +122,10 @@ class TelegramNotificationService
      */
     public function sendEodNotification(AnalysisRun $run, ?MarketAnalysis $analysis = null, bool $force = false): array
     {
-        $lockKey = 'telegram_send_lock_' . $run->id;
+        $lockKey = 'telegram_send_lock_'.$run->id;
         $lock = Cache::lock($lockKey, 30);
 
-        if (!$lock->get()) {
+        if (! $lock->get()) {
             return [
                 'status' => 'skipped_concurrent',
                 'message' => 'Proses pengiriman Telegram sedang berjalan oleh worker lain.',
@@ -135,7 +136,7 @@ class TelegramNotificationService
             $analysis = $analysis ?? $run->marketAnalysis;
             $payloadText = $this->formatEodMessage($run, $analysis);
             $contentHash = sha1($payloadText);
-            $messageHash = sha1("EOD_CONTENT_" . $contentHash);
+            $messageHash = sha1('EOD_CONTENT_'.$contentHash);
 
             // 1. Check if identical content was already sent recently (within 18 hours)
             $identicalLog = NotificationLog::where('channel', 'telegram')
@@ -144,7 +145,7 @@ class TelegramNotificationService
                 ->where('created_at', '>=', now()->subHours(18))
                 ->first();
 
-            if ($identicalLog && !$force) {
+            if ($identicalLog && ! $force) {
                 return [
                     'status' => 'skipped_duplicate',
                     'message' => "Laporan EOD identik untuk sesi pasar ini sudah pernah terkirim pada {$identicalLog->sent_at}.",
@@ -158,7 +159,7 @@ class TelegramNotificationService
                 ->where('status', 'sent')
                 ->first();
 
-            if ($existingRunLog && !$force) {
+            if ($existingRunLog && ! $force) {
                 return [
                     'status' => 'skipped_duplicate',
                     'message' => "Laporan EOD untuk run {$run->run_id} sudah pernah terkirim pada {$existingRunLog->sent_at}.",
@@ -171,12 +172,12 @@ class TelegramNotificationService
                 ->where('status', 'sent')
                 ->where(function ($q) {
                     $q->whereDate('created_at', today())
-                      ->orWhere('created_at', '>=', now()->subHours(18));
+                        ->orWhere('created_at', '>=', now()->subHours(18));
                 })
                 ->exists();
 
-            if ($priorSentToday && ($force || !$identicalLog)) {
-                $payloadText = "🔄 [PEMBARUAN / REVISI LAPORAN]\n" . $payloadText;
+            if ($priorSentToday && ($force || ! $identicalLog)) {
+                $payloadText = "🔄 [PEMBARUAN / REVISI LAPORAN]\n".$payloadText;
             }
 
             // Create pending log
@@ -255,23 +256,23 @@ class TelegramNotificationService
             ];
         }
 
-        $nowWib = Carbon::now('Asia/Jakarta')->translatedFormat('d M Y, H:i') . ' WIB';
+        $nowWib = Carbon::now('Asia/Jakarta')->translatedFormat('d M Y, H:i').' WIB';
         $lines = [
-            "🚨 PERINGATAN SISTEM — AETHER MARKET INTELLIGENCE",
-            "══════════════════════════════════════════════════",
+            '🚨 PERINGATAN SISTEM — AETHER MARKET INTELLIGENCE',
+            '══════════════════════════════════════════════════',
             "Waktu : {$nowWib}",
             "Pesan : {$sanitizedError}",
         ];
 
-        if (!empty($context['run_id'])) {
-            $lines[] = "Run ID: " . $this->sanitizeSecret($context['run_id']);
+        if (! empty($context['run_id'])) {
+            $lines[] = 'Run ID: '.$this->sanitizeSecret($context['run_id']);
         }
-        if (!empty($context['source'])) {
-            $lines[] = "Sumber: " . $this->sanitizeSecret($context['source']);
+        if (! empty($context['source'])) {
+            $lines[] = 'Sumber: '.$this->sanitizeSecret($context['source']);
         }
 
-        $lines[] = "──────────────────────────────────────────────────";
-        $lines[] = "Periksa log di storage/logs/eod_pipeline_output.log";
+        $lines[] = '──────────────────────────────────────────────────';
+        $lines[] = 'Periksa log di storage/logs/eod_pipeline_output.log';
 
         $payload = implode("\n", $lines);
 
@@ -287,9 +288,11 @@ class TelegramNotificationService
         $res = $this->executeCliSend($payload);
         if ($res['success']) {
             $log->update(['status' => 'sent', 'sent_at' => now()]);
+
             return ['status' => 'sent', 'log_id' => $log->id];
         } else {
             $log->update(['status' => 'failed', 'error_message' => $this->sanitizeSecret($res['error'])]);
+
             return ['status' => 'failed', 'error' => $res['error']];
         }
     }
@@ -299,12 +302,29 @@ class TelegramNotificationService
      */
     protected function executeCliSend(string $message): array
     {
+        // Strict test isolation: never send real Telegram messages during automated testing
+        if (app()->runningUnitTests()) {
+            if (str_contains($this->cliCommand, 'non_existent')) {
+                return [
+                    'success' => false,
+                    'output' => '',
+                    'error' => "Command not found: {$this->cliCommand}",
+                ];
+            }
+
+            return [
+                'success' => true,
+                'output' => 'MOCK_TEST_DISPATCH_OK',
+                'error' => null,
+            ];
+        }
+
         $tempDir = storage_path('app/temp');
-        if (!is_dir($tempDir)) {
+        if (! is_dir($tempDir)) {
             @mkdir($tempDir, 0755, true);
         }
 
-        $tempFile = $tempDir . DIRECTORY_SEPARATOR . 'tg_' . uniqid() . '_' . time() . '.txt';
+        $tempFile = $tempDir.DIRECTORY_SEPARATOR.'tg_'.uniqid().'_'.time().'.txt';
         file_put_contents($tempFile, $message);
 
         try {

@@ -2,8 +2,68 @@
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
+@source '../views/**/*.blade.php';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-        'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-sans: 'Plus Jakarta Sans', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif;
+
+    /* Aether Institutional Theme Tokens */
+    --color-surface-dim: #00132c;
+    --color-surface: #00132c;
+    --color-surface-bright: #263a57;
+    --color-surface-container-lowest: #000e23;
+    --color-surface-container-low: #041c38;
+    --color-surface-container: #09203c;
+    --color-surface-container-high: #152a47;
+    --color-surface-container-highest: #213552;
+    --color-surface-1: #0A213D;
+    --color-surface-2: #0D2B4E;
+
+    --color-navy-base: #05152B;
+    --color-gold-base: #E5C49B;
+    --color-gold-hover: #D6B284;
+    --color-ivory-base: #F5F1E8;
+
+    --color-on-surface: #d5e3ff;
+    --color-on-surface-variant: #c5c6cd;
+    --color-outline: #8f9097;
+    --color-outline-variant: #44474d;
+
+    --color-primary: #b8c7e4;
+    --color-on-primary: #223148;
+    --color-primary-container: #05152b;
+    --color-on-primary-container: #71809b;
+
+    --color-secondary: #cac6be;
+    --color-on-secondary: #31302b;
+    --color-secondary-container: #484740;
+
+    --color-tertiary: #e2c198;
+    --color-on-tertiary: #412d0f;
+    --color-tertiary-container: #201200;
+
+    --color-error: #ffb4ab;
+    --color-on-error: #690005;
+    --color-error-container: #93000a;
+}
+
+/* Custom Financial Terminal Helpers */
+.tabular-nums {
+    font-variant-numeric: tabular-nums;
+}
+
+/* Institutional Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #05152B;
+}
+::-webkit-scrollbar-thumb {
+    background: #152a47;
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #E5C49B;
 }

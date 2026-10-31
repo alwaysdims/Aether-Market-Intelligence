@@ -1,0 +1,5 @@
+name: aether_router
+version: "1.1.0"
+description: "Aether Market Intelligence deterministic and conversational Telegram router"
+enabled: true
+author: "Aether Market Intelligence"

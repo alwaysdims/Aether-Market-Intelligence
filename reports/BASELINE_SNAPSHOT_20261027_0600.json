@@ -1,0 +1,47 @@
+{
+    "snapshot_timestamp": "2026-10-27T06:01:14+07:00",
+    "purpose": "Pre-reconciliation baseline snapshot for Task Prioritas Rekonsiliasi",
+    "definitions": {
+        "total_records": "Total baris data tersimpan di tabel",
+        "distinct_tickers": "Jumlah kode emiten unik yang memiliki minimal 1 rekod",
+        "final_bars": "Bar dengan is_eod_final = true menurut metadata sumber sekunder",
+        "provisional_bars": "Bar yang belum berstatus final",
+        "unit_price": "IDR (Rupiah per lembar saham)",
+        "unit_volume": "Lembar saham (Bukan lot)"
+    },
+    "market_observations": {
+        "total_records": 89323,
+        "distinct_tickers": 384,
+        "min_bar_date": "2025-10-27",
+        "max_bar_date": "2026-10-26",
+        "final_bars": 89323,
+        "provisional_bars": 0
+    },
+    "company_fundamentals": {
+        "total_records": 1301,
+        "distinct_tickers": 281,
+        "min_year": 2021,
+        "max_year": 2026
+    },
+    "company_corporate_actions": {
+        "total_records": 2693,
+        "distinct_tickers": 280
+    },
+    "company_analysis_metrics": {
+        "total_records": 380,
+        "distinct_tickers": 378,
+        "tech_calculated": 380,
+        "fund_calculated": 245,
+        "fund_partial": 42
+    },
+    "market_analyses": {
+        "total_records": 209,
+        "distinct_tickers": 191
+    },
+    "idx_ingestion_jobs": {
+        "COMPLETED": 241,
+        "FAILED": 29,
+        "PARTIAL": 133,
+        "PENDING": 5
+    }
+}

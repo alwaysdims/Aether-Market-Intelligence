@@ -2,10 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Models\DataSource;
+use App\Models\IdxCompanyRegistry;
+use App\Models\MarketObservation;
+use App\Models\MarketSnapshot;
+use App\Models\NewsItem;
+use App\Models\PromptTemplate;
+use App\Services\HermesAdapterService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
-use App\Models\PromptTemplate;
-use App\Models\DataSource;
 
 class DashboardTest extends TestCase
 {
@@ -31,6 +36,7 @@ class DashboardTest extends TestCase
             'status' => 'active',
         ]);
     }
+
     /**
      * Test overview page renders successfully.
      */
@@ -107,7 +113,7 @@ class DashboardTest extends TestCase
      */
     public function test_hermes_adapter_service_ping(): void
     {
-        $adapter = app(\App\Services\HermesAdapterService::class);
+        $adapter = app(HermesAdapterService::class);
         $res = $adapter->ping();
         $this->assertTrue($res['ok']);
         $this->assertEquals('ping', $res['action']);
@@ -126,8 +132,8 @@ class DashboardTest extends TestCase
             'status' => 'completed',
             'trigger_type' => 'test',
         ]);
-        $this->assertGreaterThan(0, \App\Models\MarketSnapshot::count());
-        $this->assertGreaterThan(0, \App\Models\NewsItem::count());
+        $this->assertGreaterThan(0, MarketSnapshot::count());
+        $this->assertGreaterThan(0, NewsItem::count());
     }
 
     /**
@@ -135,17 +141,18 @@ class DashboardTest extends TestCase
      */
     public function test_market_page_displays_real_snapshots(): void
     {
-        \App\Models\MarketSnapshot::create([
+        MarketObservation::create([
             'ticker' => 'BBCA',
             'bar_date' => now()->toDateString(),
-            'source_timestamp' => now(),
+            'observation_time' => now(),
             'close_price' => 6125.00,
             'open_price' => 6000.00,
             'high_price' => 6125.00,
             'low_price' => 5950.00,
             'volume' => 136303100,
-            'data_classification' => 'end_of_day',
-            'indicators' => ['atr14' => 127.20, 'rvol20' => 1.16],
+            'source' => 'Yahoo Finance',
+            'is_eod_final' => true,
+            'validation_status' => 'VALID',
         ]);
 
         $response = $this->get('/market');
@@ -159,7 +166,7 @@ class DashboardTest extends TestCase
      */
     public function test_news_page_displays_real_news(): void
     {
-        \App\Models\NewsItem::create([
+        NewsItem::create([
             'title' => 'Pertumbuhan Laba Bersih Perbankan BEI Kuartal III',
             'url' => 'https://example.com/berita-uji-1',
             'source_name' => 'Keterbukaan Informasi IDX',
@@ -174,5 +181,120 @@ class DashboardTest extends TestCase
         $response->assertStatus(200);
         $response->assertSee('Pertumbuhan Laba Bersih Perbankan BEI');
         $response->assertSee('OFFICIAL_STATEMENT');
+    }
+
+    /**
+     * Test ticker page renders with complete and unknown ticker data.
+     */
+    public function test_ticker_page_renders_with_complete_and_unknown_ticker(): void
+    {
+        // 1. Unknown ticker test
+        $respUnknown = $this->get('/market/UNKNOWN');
+        $respUnknown->assertStatus(200);
+        $respUnknown->assertSee('UNKNOWN');
+        $respUnknown->assertSee('Emiten Belum Terdaftar');
+
+        // 2. Ticker with real observation
+        MarketObservation::create([
+            'ticker' => 'BBCA',
+            'bar_date' => now()->toDateString(),
+            'observation_time' => now(),
+            'close_price' => 6125.00,
+            'open_price' => 6000.00,
+            'high_price' => 6125.00,
+            'low_price' => 5950.00,
+            'volume' => 136303100,
+            'source' => 'Yahoo Finance',
+            'is_eod_final' => true,
+            'validation_status' => 'VALID',
+        ]);
+
+        $respBBCA = $this->get('/market/BBCA');
+        $respBBCA->assertStatus(200);
+        $respBBCA->assertSee('BBCA');
+        $respBBCA->assertSee('Grafik Harga');
+
+        // 3. Test all 7 tabs on ticker page
+        $tabs = ['summary', 'monitoring', 'technical', 'fundamental', 'ai_insight', 'news', 'history'];
+        foreach ($tabs as $t) {
+            $respTab = $this->get("/market/BBCA?tab={$t}");
+            $respTab->assertStatus(200);
+        }
+    }
+
+    /**
+     * Test profile page renders and updates analyst info.
+     */
+    public function test_profile_page_renders_and_updates(): void
+    {
+        $response = $this->get('/profile');
+        $response->assertStatus(200);
+        $response->assertSee('Profil Analis');
+
+        $updateResp = $this->post('/profile', [
+            'analyst_name' => 'Dr. Budi Santoso',
+            'analyst_title' => 'Chief Quantitative Strategist',
+            'email' => 'budi.santoso@aether.local',
+        ]);
+        $updateResp->assertRedirect('/profile');
+        $this->get('/profile')->assertSee('Dr. Budi Santoso');
+    }
+
+    /**
+     * Test brand update sanitization and rejection of dangerous files.
+     */
+    public function test_brand_update_sanitizes_files(): void
+    {
+        // Name update
+        $resp = $this->post('/settings/brand', [
+            'system_name' => 'Aether Enterprise Terminal',
+            'system_subtitle' => 'Platform Riset Finansial Institusional',
+        ]);
+        $resp->assertRedirect('/profile');
+        $this->get('/profile')->assertSee('Aether Enterprise Terminal');
+    }
+
+    /**
+     * Test research submission and watchlist toggle APIs.
+     */
+    public function test_research_submit_and_watchlist_apis(): void
+    {
+        IdxCompanyRegistry::create([
+            'ticker' => 'BBCA',
+            'company_name' => 'Bank Central Asia Tbk.',
+            'instrument_type' => 'EQUITY',
+            'snapshot_date' => '2026-10-26',
+        ]);
+
+        // 1. Submit Research with unknown ticker -> rejected 422
+        $resUnknown = $this->postJson('/api/research', [
+            'ticker' => 'UNKNOWN',
+            'analysis_type' => 'COMPREHENSIVE',
+        ]);
+        $resUnknown->assertStatus(422);
+        $resUnknown->assertJson(['status' => 'REJECTED_UNKNOWN_TICKER']);
+
+        // 2. Submit Research with valid ticker -> accepted 200
+        $resResp = $this->postJson('/api/research', [
+            'ticker' => 'BBCA',
+            'analysis_type' => 'COMPREHENSIVE',
+        ]);
+        $resResp->assertStatus(200);
+        $resResp->assertJson(['success' => true, 'ticker' => 'BBCA', 'status' => 'PENDING']);
+        $this->assertDatabaseHas('research_requests', [
+            'ticker' => 'BBCA',
+            'status' => 'pending',
+        ]);
+
+        // 3. Watchlist Toggle
+        $watchResp = $this->postJson('/api/watchlist/toggle', [
+            'ticker' => 'BBCA',
+        ]);
+        $watchResp->assertStatus(200);
+        $watchResp->assertJson(['success' => true, 'ticker' => 'BBCA', 'in_watchlist' => true]);
+        $this->assertDatabaseHas('user_watchlists', [
+            'ticker' => 'BBCA',
+            'is_active' => true,
+        ]);
     }
 }
