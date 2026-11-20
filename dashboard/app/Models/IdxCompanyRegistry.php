@@ -14,6 +14,16 @@ class IdxCompanyRegistry extends Model
         'snapshot_date' => 'date',
         'is_validated_ml' => 'boolean',
         'shares_outstanding' => 'integer',
+        'first_bar_date' => 'date',
+        'last_bar_date' => 'date',
+        'last_success_at' => 'datetime',
+        'adjusted_bars_count' => 'integer',
+        'raw_bars_count' => 'integer',
+        'backfill_metadata' => 'array',
+        'eod_retry_attempts' => 'integer',
+        'eod_target_session' => 'date',
+        'eod_next_retry_at' => 'datetime',
+        'eod_last_attempt_at' => 'datetime',
     ];
 
     public function fundamentals(): HasMany

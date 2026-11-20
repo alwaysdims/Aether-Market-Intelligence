@@ -8,6 +8,7 @@ use App\Models\ResearchRequest;
 use App\Models\ScheduledTelegramJob;
 use App\Models\TelegramOutbox;
 use Carbon\Carbon;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
@@ -199,10 +200,13 @@ class TelegramFormattingService
         $lines[] = '';
         $lines[] = '🎯 HASIL EVALUASI HORIZON 5-HARI';
         $lines[] = '• Menunggu (Pending)     : '.($stats['eval_pending'] ?? 0);
-        $lines[] = '• Benar (Correct)        : '.($stats['eval_correct'] ?? 0);
-        $lines[] = '• Salah (Incorrect)      : '.($stats['eval_incorrect'] ?? 0);
+        $lines[] = '• Final Benar (Correct)  : '.($stats['eval_correct'] ?? 0);
+        $lines[] = '• Final Salah (Incorrect): '.($stats['eval_incorrect'] ?? 0);
         $lines[] = '• Netral / Abstain       : '.($stats['eval_neutral'] ?? 0);
-        $lines[] = '• Akurasi Arah Sinyal    : '.($stats['directional_accuracy'] ?? 'N/A');
+        if (($stats['eval_provisional_total'] ?? 0) > 0) {
+            $lines[] = "• Evaluasi Provisional   : {$stats['eval_provisional_total']} (Menunggu rekonsiliasi EOD final internal)";
+        }
+        $lines[] = '• Akurasi Arah Final     : '.($stats['directional_accuracy'] ?? 'N/A').' (Denominator final: '.($stats['eval_denominator'] ?? 0).')';
         $lines[] = '';
         $lines[] = 'ℹ️ Catatan Provenance: 10 sinyal bertanggal 16 Okt berstatus Retrospective Replay (tidak dihitung sebagai forward live). 30 evaluasi fallback lama diisolasi terpisah.';
         $lines[] = '══════════════════════════════════════════════';
@@ -219,34 +223,54 @@ class TelegramFormattingService
         string $payload,
         ?string $predictionId = null,
         ?string $replyToMessageId = null,
-        ?string $chatId = null
+        ?string $chatId = null,
+        ?Carbon $dueAt = null,
+        string $triggerSource = 'SCHEDULED',
+        array $metadata = []
     ): TelegramOutbox {
-        return TelegramOutbox::firstOrCreate(
-            ['dedup_key' => $dedupKey],
-            [
+        $chatId = $chatId ?? $this->defaultChatId;
+
+        // Atomic conflict-safe insert: if dedup_key exists, return existing without throwing exception
+        $existing = TelegramOutbox::where('dedup_key', $dedupKey)->first();
+        if ($existing) {
+            return $existing;
+        }
+
+        try {
+            return TelegramOutbox::create([
+                'dedup_key' => $dedupKey,
                 'prediction_id' => $predictionId,
-                'chat_id' => $chatId ?? $this->defaultChatId,
+                'chat_id' => $chatId,
                 'reply_to_message_id' => $replyToMessageId,
                 'message_type' => $messageType,
                 'payload_text' => $payload,
                 'status' => 'QUEUED',
                 'retry_count' => 0,
-            ]
-        );
+                'due_at' => $dueAt,
+                'trigger_source' => $triggerSource,
+                'metadata' => ! empty($metadata) ? $metadata : null,
+            ]);
+        } catch (UniqueConstraintViolationException $e) {
+            // Verify if the violation specifically relates to dedup_key
+            if (str_contains($e->getMessage(), 'telegram_outbox_dedup_key_unique')) {
+                return TelegramOutbox::where('dedup_key', $dedupKey)->firstOrFail();
+            }
+            throw $e;
+        }
     }
 
     /**
      * Process pending items in outbox queue with atomic claim, concurrency protection, and backoff.
      * When mockOnly is true, updates state without calling actual Telegram network API.
      */
-    public function processOutboxQueue(bool $mockOnly = true): array
+    public function processOutboxQueue(bool $mockOnly = true, ?int $scheduledJobId = null, ?int $onlyOutboxId = null): array
     {
         $sentCount = 0;
         $failedCount = 0;
         $supersededCount = 0;
 
         // Atomic claim: fetch items with skipLocked to protect against concurrent workers
-        $itemsToProcess = DB::transaction(function () {
+        $itemsToProcess = DB::transaction(function () use ($scheduledJobId, $onlyOutboxId) {
             return TelegramOutbox::where(function ($q) {
                 $q->where('status', 'QUEUED')
                     ->orWhere(function ($q2) {
@@ -255,11 +279,18 @@ class TelegramFormattingService
                             ->where('updated_at', '<', now()->subMinutes(5));
                     });
             })
+                ->whereNotIn('status', ['SENT', 'SUPERSEDED_UNSENT', 'EXPIRED_SUPPRESSED', 'CANCELLED', 'FAILED'])
+                ->where(function ($q) {
+                    $q->whereNull('due_at')
+                        ->orWhere('due_at', '<=', now());
+                })
                 ->where(function ($q) {
                     $q->whereNull('retry_after')
                         ->orWhere('retry_after', '<=', now());
                 })
                 ->where('retry_count', '<', 3)
+                ->when($scheduledJobId !== null, fn ($query) => $query->where('metadata->scheduled_job_id', $scheduledJobId))
+                ->when($onlyOutboxId !== null, fn ($query) => $query->whereKey($onlyOutboxId))
                 ->lockForUpdate()
                 ->take(10)
                 ->get()
@@ -355,6 +386,7 @@ class TelegramFormattingService
                 // Real delivery via Hermes CLI
                 try {
                     $cliCmd = config('services.hermes.cli_command', 'hermes');
+                    $cliProfile = config('services.hermes.profile', 'aether-prod');
                     $tempDir = storage_path('app/temp');
                     @mkdir($tempDir, 0755, true);
 
@@ -376,7 +408,7 @@ class TelegramFormattingService
                         file_put_contents($tempFile, $chunkHeader.$chunk);
 
                         $targetChat = $item->chat_id ?: config('services.telegram.chat_id', '5923895922');
-                        $args = [$cliCmd, 'send', '--to', "telegram:{$targetChat}", '--file', $tempFile, '--json'];
+                        $args = [$cliCmd, '-p', $cliProfile, 'send', '--to', "telegram:{$targetChat}", '--file', $tempFile, '--json'];
 
                         $process = new Process($args);
                         $process->setTimeout(60);
@@ -415,6 +447,7 @@ class TelegramFormattingService
                         ]),
                     ]);
                     $this->syncJobDeliveryStatus($item, 'COMPLETED', 'SENT', $primaryMsgId, now());
+                    $this->syncTradingPlanDeliveryStatus($item, 'SENT', $primaryMsgId, now());
                     $sentCount++;
                 } catch (\Exception $e) {
                     $newRetry = $item->retry_count + 1;
@@ -429,6 +462,7 @@ class TelegramFormattingService
                         'error_message' => ($isTimeout ? 'Timeout transport CLI (hasil pengiriman belum pasti): ' : 'Pengecualian transport: ').$e->getMessage(),
                     ]);
                     $this->syncJobDeliveryStatus($item, $newStatus, $newStatus, null, null, $item->error_message);
+                    $this->syncTradingPlanDeliveryStatus($item, $newStatus, null, null, $item->error_message);
                     $failedCount++;
                 }
             }
@@ -475,6 +509,82 @@ class TelegramFormattingService
             }
         } catch (\Throwable $e) {
             Log::warning("[TelegramFormattingService] Failed to sync job status #{$jobId}: ".$e->getMessage());
+        }
+    }
+
+    protected function syncTradingPlanDeliveryStatus(
+        TelegramOutbox $item,
+        string $deliveryStatus,
+        ?string $outboundMsgId = null,
+        ?\DateTimeInterface $sentAt = null,
+        ?string $errorMessage = null
+    ): void {
+        $meta = is_array($item->metadata) ? $item->metadata : [];
+        $planIds = $meta['plan_ids'] ?? ($item->prediction_id ? [$item->prediction_id] : []);
+
+        if (empty($planIds)) {
+            return;
+        }
+
+        try {
+            foreach ($planIds as $planId) {
+                $signal = PredictionSignal::where('prediction_id', $planId)->first();
+                if (! $signal) {
+                    continue;
+                }
+
+                $signalMeta = is_array($signal->metadata) ? $signal->metadata : [];
+
+                if ($deliveryStatus === 'SENT') {
+                    $signal->update([
+                        'telegram_message_id' => $outboundMsgId,
+                        'published_at' => $sentAt ?? now(),
+                        'metadata' => array_merge($signalMeta, [
+                            'delivery_status' => 'SENT',
+                            'sent_at' => ($sentAt ?? now())->toISOString(),
+                            'outbox_id' => $item->id,
+                        ]),
+                    ]);
+
+                    MonitoringEvent::create([
+                        'prediction_id' => $planId,
+                        'event_type' => 'ALERT_DELIVERED',
+                        'event_time' => $sentAt ?? now(),
+                        'first_observed_at' => now(),
+                        'price_observed' => $signal->reference_price,
+                        'description' => "Trading plan berhasil terkirim ke Telegram. Message ID #{$outboundMsgId}.",
+                        'metadata' => [
+                            'telegram_message_id' => $outboundMsgId,
+                            'outbox_id' => $item->id,
+                            'delivery_status' => 'SENT',
+                        ],
+                    ]);
+                } elseif (in_array($deliveryStatus, ['FAILED', 'SUPERSEDED_UNSENT'])) {
+                    $signal->update([
+                        'metadata' => array_merge($signalMeta, [
+                            'delivery_status' => 'FAILED',
+                            'delivery_error' => $errorMessage,
+                            'outbox_id' => $item->id,
+                        ]),
+                    ]);
+
+                    MonitoringEvent::create([
+                        'prediction_id' => $planId,
+                        'event_type' => 'DELIVERY_FAILED',
+                        'event_time' => now(),
+                        'first_observed_at' => now(),
+                        'price_observed' => $signal->reference_price,
+                        'description' => "Pengiriman trading plan ke Telegram gagal: {$errorMessage}. Plan tidak dihitung sebagai rekomendasi yang diterima pengguna.",
+                        'metadata' => [
+                            'outbox_id' => $item->id,
+                            'error' => $errorMessage,
+                            'delivery_status' => 'FAILED',
+                        ],
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[TelegramFormattingService] Failed to sync trading plan delivery status: '.$e->getMessage());
         }
     }
 }

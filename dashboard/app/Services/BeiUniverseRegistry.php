@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\IdxCompanyRegistry;
 use Illuminate\Support\Facades\DB;
 
 class BeiUniverseRegistry
@@ -21,6 +22,12 @@ class BeiUniverseRegistry
         'MEDC' => 'PT Medco Energi Internasional Tbk',
         'SMRA' => 'PT Summarecon Agung Tbk',
     ];
+
+    public static function hasProductionMlInference(string $ticker): bool
+    {
+        // Ticker allowlist is not model-artifact or inference-receipt proof.
+        return false;
+    }
 
     /**
      * Known BEI / IDX equity constituents with official corporate registry names.
@@ -76,6 +83,8 @@ class BeiUniverseRegistry
         'AGRO' => 'PT Bank Raya Indonesia Tbk',
 
         // Energy, Mining & Commodities
+        'BNBR' => 'PT Bakrie & Brothers Tbk',
+        'BULL' => 'PT Buana Lintas Lautan Tbk',
         'PTRO' => 'PT Petrosea Tbk',
         'DEWA' => 'PT Darma Henwa Tbk',
         'ADRO' => 'PT Adaro Energy Indonesia Tbk',
@@ -171,7 +180,7 @@ class BeiUniverseRegistry
                     'ticker' => $ticker,
                     'company_name' => $name,
                     'exchange' => 'IDX',
-                    'is_ml_validated' => array_key_exists($ticker, self::VALIDATED_ML_UNIVERSE),
+                    'is_ml_validated' => self::hasProductionMlInference($ticker),
                     'is_benchmark' => ($ticker === '^JKSE'),
                 ];
             }
@@ -188,26 +197,17 @@ class BeiUniverseRegistry
                 'IKUT', 'MAAF', 'SIAP', 'AUTO', 'OPEN', 'HIGH', 'CALL', 'PULL', 'TEST',
             ];
             if (! in_array($candidate, $ignoreWords, true)) {
-                $isKnown = array_key_exists($candidate, self::KNOWN_BEI_ISSUERS);
-                $hasObservation = false;
-                try {
-                    $hasObservation = DB::table('market_observations')
-                        ->where('ticker', $candidate)
-                        ->exists();
-                } catch (\Throwable $e) {
-                    $hasObservation = false;
-                }
-
-                if ($isKnown || $hasObservation) {
+                $resolution = $this->resolveInstrument($candidate);
+                if ($resolution['is_valid']) {
                     return [
                         'valid' => true,
                         'ticker' => $candidate,
-                        'company_name' => self::KNOWN_BEI_ISSUERS[$candidate] ?? "Emiten Terdaftar BEI ({$candidate})",
+                        'company_name' => $resolution['company_name'],
                         'exchange' => 'IDX',
-                        'is_ml_validated' => array_key_exists($candidate, self::VALIDATED_ML_UNIVERSE),
-                        'is_benchmark' => false,
-                        'resolution_provenance' => [
-                            'source' => $isKnown ? 'KNOWN_BEI_ISSUERS_CATALOG' : 'DATABASE_MARKET_OBSERVATIONS',
+                        'is_ml_validated' => $resolution['is_ml_validated'] ?? false,
+                        'is_benchmark' => $resolution['is_benchmark'] ?? false,
+                        'resolution_provenance' => $resolution['resolution_provenance'] ?? [
+                            'source' => 'RESOLVE_INSTRUMENT_DISCOVERY',
                             'checked_at' => now('Asia/Jakarta')->toIso8601String(),
                         ],
                     ];
@@ -314,7 +314,7 @@ class BeiUniverseRegistry
                 'ticker' => $ticker,
                 'company_name' => self::KNOWN_BEI_ISSUERS[$ticker],
                 'exchange' => 'IDX',
-                'is_ml_validated' => array_key_exists($ticker, self::VALIDATED_ML_UNIVERSE),
+                'is_ml_validated' => self::hasProductionMlInference($ticker),
                 'is_benchmark' => false,
             ];
         }
@@ -331,19 +331,83 @@ class BeiUniverseRegistry
                 $hasObservation = false;
             }
 
-            if ($isKnown || $hasObservation) {
+            // Check IdxCompanyRegistry table
+            $registryRow = null;
+            try {
+                $registryRow = IdxCompanyRegistry::where('ticker', $ticker)->first();
+            } catch (\Throwable $e) {
+                $registryRow = null;
+            }
+
+            if ($isKnown || $hasObservation || $registryRow) {
+                $cName = self::KNOWN_BEI_ISSUERS[$ticker] ?? ($registryRow?->company_name ?? "Emiten Terdaftar BEI ({$ticker})");
+
                 return [
                     'is_valid' => true,
                     'ticker' => $ticker,
-                    'company_name' => self::KNOWN_BEI_ISSUERS[$ticker] ?? "Emiten Terdaftar BEI ({$ticker})",
+                    'company_name' => $cName,
                     'exchange' => 'IDX',
-                    'is_ml_validated' => array_key_exists($ticker, self::VALIDATED_ML_UNIVERSE),
+                    'is_ml_validated' => self::hasProductionMlInference($ticker),
                     'is_benchmark' => false,
                     'resolution_provenance' => [
-                        'source' => $isKnown ? 'KNOWN_BEI_ISSUERS_CATALOG' : 'DATABASE_MARKET_OBSERVATIONS',
+                        'source' => $isKnown ? 'KNOWN_BEI_ISSUERS_CATALOG' : ($registryRow ? 'DATABASE_COMPANY_REGISTRY' : 'DATABASE_MARKET_OBSERVATIONS'),
                         'checked_at' => now('Asia/Jakarta')->toIso8601String(),
                     ],
                 ];
+            }
+
+            // Layer 2: Discovery via IDX Edge Provider (/api/search)
+            try {
+                $client = app(IdxEdgeClient::class);
+                $searchResult = $client->search($ticker);
+
+                if (! empty($searchResult['success']) && ! empty($searchResult['data']['items'])) {
+                    $matched = null;
+                    foreach ($searchResult['data']['items'] as $item) {
+                        if (strtoupper(trim($item['stock_code'] ?? '')) === $ticker) {
+                            $matched = $item;
+                            break;
+                        }
+                    }
+
+                    if ($matched) {
+                        $verifiedName = trim((string) ($matched['stock_name'] ?? "{$ticker} Tbk."));
+
+                        // Persist into IdxCompanyRegistry with provenance metadata
+                        try {
+                            IdxCompanyRegistry::updateOrCreate(
+                                ['ticker' => $ticker],
+                                [
+                                    'company_name' => $verifiedName,
+                                    'snapshot_date' => now('Asia/Jakarta')->toDateString(),
+                                    'is_validated_ml' => false,
+                                ]
+                            );
+                        } catch (\Throwable $e) {
+                            // Ignored if DB table not writable in test sandbox
+                        }
+
+                        return [
+                            'is_valid' => true,
+                            'ticker' => $ticker,
+                            'company_name' => $verifiedName,
+                            'exchange' => 'IDX',
+                            'is_ml_validated' => false,
+                            'is_benchmark' => false,
+                            'resolution_provenance' => [
+                                'source' => 'PROVIDER_DISCOVERY_VERIFIED',
+                                'provider' => 'IDX_EDGE',
+                                'endpoint' => '/api/search',
+                                'matched_code' => $ticker,
+                                'matched_name' => $verifiedName,
+                                'last_trading_date' => $matched['last_date'] ?? null,
+                                'verified_at' => now('Asia/Jakarta')->toIso8601String(),
+                            ],
+                        ];
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Provider discovery error or timeout
             }
 
             return [
@@ -351,9 +415,9 @@ class BeiUniverseRegistry
                 'error_type' => 'UNREGISTERED_BEI_TICKER',
                 'ticker' => $ticker,
                 'company_name' => null,
-                'message' => "Kode '{$ticker}' tidak terdaftar dalam semesta emiten BEI yang aktif atau tercatat di database.",
+                'message' => "Kode '{$ticker}' tidak ditemukan dalam katalog bursa lokal maupun hasil pencarian penyedia data BEI.",
                 'resolution_provenance' => [
-                    'source' => 'REGISTRY_VALIDATION_FAILED',
+                    'source' => 'REGISTRY_AND_PROVIDER_DISCOVERY_EXHAUSTED',
                     'checked_at' => now('Asia/Jakarta')->toIso8601String(),
                 ],
             ];

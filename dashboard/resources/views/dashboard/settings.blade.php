@@ -31,8 +31,11 @@
             <span>Konfigurasi Model AI & Guardrail Inferensi (Terkunci)</span>
         </h3>
         <p class="text-xs text-[#F5F1E8]/80 leading-relaxed">
-            Sesuai Master Requirement dan Operational Directive: Model AI dikunci secara permanen ke <span class="text-[#E5C49B] font-mono font-bold">ag/gemini-3.8-flash-high</span> melalui router lokal 9router di <span class="text-[#E5C49B] font-mono">http://127.0.0.1:20128/v1</span>.
-            Inferensi live dijaga oleh <span class="text-emerald-400 font-mono font-bold">AI_LIVE_INFERENCE_ENABLED=false</span>. Sistem dilarang mengganti model secara otomatis atau mengirimkan order broker.
+            AI dashboard memakai provider <span class="text-[#E5C49B] font-mono font-bold">{{ strtoupper(config('services.dashboard_ai.provider', 'google')) }}</span>
+            dengan model <span class="text-[#E5C49B] font-mono font-bold">{{ config('services.dashboard_ai.model', 'N/A') }}</span>.
+            Konsultasi Hermes memakai 9router terpisah dengan model <span class="text-[#E5C49B] font-mono">{{ config('services.ai_router.model_id', 'N/A') }}</span>.
+            Inferensi EOD dashboard: <span class="text-emerald-400 font-mono font-bold">{{ config('services.dashboard_ai.eod_inference_enabled') ? 'ENABLED' : 'DISABLED' }}</span>.
+            Sistem tidak mengganti model otomatis dan tidak memiliki eksekusi order broker.
         </p>
     </div>
 
@@ -79,13 +82,13 @@
             <table class="w-full text-left text-xs text-[#F5F1E8]">
                 <thead class="bg-[#071C35] text-[#F5F1E8]/50 uppercase tracking-wider font-mono text-[10px] border-b border-[#F5F1E8]/10">
                     <tr>
-                        <th class="px-4 py-2.5">Sumber & Endpoint</th>
+                        <th class="px-4 py-2.5">Nama & Endpoint</th>
                         <th class="px-4 py-2.5">Peran & Tipe</th>
                         <th class="px-4 py-2.5">Klasifikasi</th>
-                        <th class="px-4 py-2.5">Izin Efektif Runtime</th>
-                        <th class="px-4 py-2.5">Kualitas Data</th>
-                        <th class="px-4 py-2.5">Bukti Verifikasi Terakhir</th>
-                        <th class="px-4 py-2.5">Catatan / Alasan Pemblokiran</th>
+                        <th class="px-4 py-2.5">Izin Operasional Runtime</th>
+                        <th class="px-4 py-2.5">Kualitas & Bukti Verifikasi</th>
+                        <th class="px-4 py-2.5">Health & Terakhir Dipakai</th>
+                        <th class="px-4 py-2.5">Alasan Karantina / Status</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-[#F5F1E8]/5 font-mono text-[11px]">
@@ -96,7 +99,7 @@
                         <tr class="hover:bg-[#0D2B4E]/60 transition">
                             <td class="px-4 py-2.5">
                                 <div class="font-bold text-[#F5F1E8] font-sans">{{ $ds->name }}</div>
-                                <div class="text-[10px] text-[#F5F1E8]/40 font-mono">{{ $ds->base_url }}{{ $ds->endpoint }}</div>
+                                <div class="text-[10px] text-[#F5F1E8]/40 font-mono">{{ rtrim($ds->base_url, '/') . '/' . ltrim($ds->endpoint, '/') }}</div>
                             </td>
                             <td class="px-4 py-2.5">
                                 <div class="text-[#E5C49B]">{{ $ds->metadata['role'] ?? $ds->type }}</div>
@@ -116,8 +119,16 @@
                                     <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-950/80 text-rose-300 border border-rose-500/40">
                                         {{ $effective['label'] }}
                                     </span>
+                                @elseif($effective['badge'] === 'HISTORICAL_ARCHIVE')
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/60 text-amber-300 border border-amber-500/30">
+                                        {{ $effective['label'] }}
+                                    </span>
                                 @elseif($effective['badge'] === 'PENDING_CANARY')
                                     <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/60 text-amber-300 border border-amber-500/30">
+                                        {{ $effective['label'] }}
+                                    </span>
+                                @elseif($effective['badge'] === 'DEPRECATED_LEGACY')
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-900 text-zinc-500 border border-zinc-700/50">
                                         {{ $effective['label'] }}
                                     </span>
                                 @else
@@ -128,32 +139,47 @@
                             </td>
                             <td class="px-4 py-2.5">
                                 @if($ds->data_quality === 'VALID')
-                                    <span class="text-emerald-400 font-semibold">VALID</span>
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-500/40 font-semibold">VALID</span>
+                                    <div class="text-[9px] text-[#F5F1E8]/50 font-sans mt-0.5">Tervalidasi kanonikal bursa</div>
                                 @elseif($ds->data_quality === 'VERIFIED_ON_SAMPLE')
                                     <span class="px-1.5 py-0.5 rounded text-[10px] bg-cyan-950 text-cyan-300 border border-cyan-500/30 font-semibold">VERIFIED_ON_SAMPLE</span>
+                                    <div class="text-[9px] text-[#F5F1E8]/50 font-sans mt-0.5">Sampel operasional lolos</div>
+                                @elseif($ds->data_quality === 'PROVIDER_SUPPLIED')
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] bg-indigo-950 text-indigo-300 border border-indigo-500/30 font-semibold">PROVIDER_SUPPLIED</span>
+                                    <div class="text-[9px] text-[#F5F1E8]/50 font-sans mt-0.5">Data provider (tanpa audit baris)</div>
                                 @elseif($ds->data_quality === 'QUARANTINED')
-                                    <span class="text-rose-400 font-semibold">QUARANTINED</span>
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] bg-rose-950 text-rose-300 border border-rose-500/40 font-semibold">QUARANTINED</span>
+                                    <div class="text-[9px] text-rose-400 font-sans mt-0.5">Ditolak untuk sinyal reguler</div>
+                                @elseif($ds->data_quality === 'HISTORICAL_ARCHIVE_ONLY')
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-950/80 text-amber-300 border border-amber-500/30 font-semibold">ARSIP_HISTORIS</span>
+                                    <div class="text-[9px] text-[#F5F1E8]/50 font-sans mt-0.5">Read-only, non-operasional</div>
                                 @elseif($ds->data_quality === 'DEPRECATED')
-                                    <span class="text-zinc-500">DEPRECATED</span>
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] bg-zinc-900 text-zinc-500 border border-zinc-700/50 font-semibold">DEPRECATED</span>
+                                    <div class="text-[9px] text-[#F5F1E8]/50 font-sans mt-0.5">Dinonaktifkan total</div>
                                 @else
-                                    <span class="text-amber-400/80">NOT_VERIFIED</span>
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] bg-amber-950/60 text-amber-400 font-semibold">NOT_VERIFIED</span>
+                                    <div class="text-[9px] text-amber-400/70 font-sans mt-0.5">Belum ada uji independen</div>
                                 @endif
                             </td>
                             <td class="px-4 py-2.5 text-[#F5F1E8]/70 text-[10px]">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="w-1.5 h-1.5 rounded-full {{ $ds->health === 'healthy' ? 'bg-emerald-400' : ($ds->health === 'degraded' ? 'bg-amber-400' : 'bg-zinc-600') }}"></span>
+                                    <span class="capitalize text-[#F5F1E8]/80 font-sans font-medium">{{ $ds->health }}</span>
+                                </div>
                                 @if($ds->last_success_at)
-                                    <div class="text-emerald-400">Sukses: {{ $ds->last_success_at->timezone('Asia/Jakarta')->format('d/m/Y H:i') }}</div>
+                                    <div class="text-emerald-400 mt-1">Sukses: {{ $ds->last_success_at->timezone('Asia/Jakarta')->format('d/m/Y H:i') }}</div>
                                 @else
-                                    <div>Sukses: -</div>
+                                    <div class="text-[#F5F1E8]/40 mt-1">Sukses: -</div>
                                 @endif
                                 @if($ds->last_attempt_at)
                                     <div class="text-[#F5F1E8]/40">Upaya: {{ $ds->last_attempt_at->timezone('Asia/Jakarta')->format('d/m/Y H:i') }}</div>
                                 @endif
-                                @if($ds->last_error_message)
-                                    <div class="text-rose-400 truncate max-w-[150px]" title="{{ $ds->last_error_message }}">Err: {{ $ds->last_error_message }}</div>
-                                @endif
                             </td>
                             <td class="px-4 py-2.5 text-[10px] text-[#F5F1E8]/70 max-w-xs font-sans">
-                                {{ $effective['reason'] }}
+                                <div>{{ $effective['reason'] }}</div>
+                                @if($ds->quarantine_reason && $effective['badge'] === 'QUARANTINED')
+                                    <div class="text-rose-400 font-mono text-[9px] mt-1">⚠️ {{ $ds->quarantine_reason }}</div>
+                                @endif
                             </td>
                         </tr>
                     @endforeach

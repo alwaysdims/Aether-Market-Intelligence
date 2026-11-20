@@ -24,21 +24,23 @@ if errorlevel 1 (
 
 echo [%date% %time%] [START] workers Token=%WORKER_TOKEN% >> "%LOG_FILE%"
 
-rem Heartbeat & Prioritas 1: Backfill Antrean BEI (Pekerjaan Berat)
+rem Heartbeat, consultation, and outbox only. EOD publication remains separately gated.
 "%PHP_BIN%" "%SCRIPT_DIR%worker_lock.php" heartbeat --token=%WORKER_TOKEN% >nul 2>&1
-"%PHP_BIN%" artisan idx:process-queue --limit=3 >> "%LOG_FILE%" 2>&1
-set IDX_EXIT=%errorlevel%
-
-rem Heartbeat & Prioritas 2: Antrean Narasi Gemini Background (Rate-Limited, Prioritas Terendah)
+set CONSULTATION_EXIT=0
+"%PHP_BIN%" "%SCRIPT_DIR%launch_app_writer.php" --consultation-queue >> "%LOG_FILE%" 2>&1
+if errorlevel 1 set CONSULTATION_EXIT=1
 "%PHP_BIN%" "%SCRIPT_DIR%worker_lock.php" heartbeat --token=%WORKER_TOKEN% >nul 2>&1
-"%PHP_BIN%" artisan idx:process-narratives --limit=2 >> "%LOG_FILE%" 2>&1
-set NARRATIVE_EXIT=%errorlevel%
+set OUTBOX_EXIT=0
+"%PHP_BIN%" "%SCRIPT_DIR%launch_app_writer.php" --process-outbox >> "%LOG_FILE%" 2>&1
+if errorlevel 1 set OUTBOX_EXIT=1
+set EOD_EXIT=HELD
+set NARRATIVE_EXIT=HELD
 
-echo [%date% %time%] [FINISH] Token=%WORKER_TOKEN% idx=%IDX_EXIT% narrative=%NARRATIVE_EXIT% >> "%LOG_FILE%"
+echo [%date% %time%] [FINISH] Token=%WORKER_TOKEN% consultation=%CONSULTATION_EXIT% outbox=%OUTBOX_EXIT% eod=%EOD_EXIT% narrative=%NARRATIVE_EXIT% publication=HELD >> "%LOG_FILE%"
 
 rem Pelepasan aman (hanya menghapus jika token masih cocok; tidak menghapus lock instance baru)
 "%PHP_BIN%" "%SCRIPT_DIR%worker_lock.php" release --token=%WORKER_TOKEN% >> "%LOG_FILE%" 2>&1
 
-if %IDX_EXIT% neq 0 exit /b %IDX_EXIT%
-if %NARRATIVE_EXIT% neq 0 exit /b %NARRATIVE_EXIT%
+if %CONSULTATION_EXIT% neq 0 exit /b %CONSULTATION_EXIT%
+if %OUTBOX_EXIT% neq 0 exit /b %OUTBOX_EXIT%
 exit /b 0

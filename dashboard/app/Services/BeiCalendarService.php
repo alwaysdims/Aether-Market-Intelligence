@@ -48,18 +48,51 @@ class BeiCalendarService
     }
 
     /**
+     * Check whether requested session has closed at supplied wall-clock time.
+     */
+    public function sessionHasClosed(CarbonInterface|string $sessionDate, ?CarbonInterface $now = null): bool
+    {
+        $target = $sessionDate instanceof CarbonInterface
+            ? $sessionDate->copy()->timezone('Asia/Jakarta')->startOfDay()
+            : Carbon::parse($sessionDate, 'Asia/Jakarta')->startOfDay();
+        $dt = ($now ?? Carbon::now('Asia/Jakarta'))->copy()->timezone('Asia/Jakarta');
+
+        return $this->isTradingDay($target)
+            && $target->lessThan($dt->copy()->startOfDay())
+            || ($this->isTradingDay($target)
+                && $target->isSameDay($dt)
+                && $dt->format('H:i') >= '16:05');
+    }
+
+    public function canRegisterQueue(CarbonInterface|string $sessionDate): bool
+    {
+        return $this->isTradingDay($sessionDate);
+    }
+
+    public function canFetchEodNow(CarbonInterface|string $sessionDate, ?CarbonInterface $now = null): bool
+    {
+        return $this->sessionHasClosed($sessionDate, $now);
+    }
+
+    /**
      * Check if market closing candle is final (on trading day and time >= 16:00 WIB).
      */
     public function isEodFinal(?CarbonInterface $now = null): bool
     {
-        $dt = ($now ?? Carbon::now('Asia/Jakarta'))->copy()->timezone('Asia/Jakarta');
+        return $this->sessionHasClosed(($now ?? Carbon::now('Asia/Jakarta'))->toDateString(), $now);
+    }
 
-        if (! $this->isTradingDay($dt)) {
-            return false;
+    public function calendarReason(CarbonInterface|string $sessionDate): ?string
+    {
+        $dt = $sessionDate instanceof CarbonInterface ? $sessionDate->copy() : Carbon::parse($sessionDate, 'Asia/Jakarta');
+        if ($dt->isSaturday() || $dt->isSunday()) {
+            return 'WEEKEND_'.strtoupper($dt->format('l'));
+        }
+        if (in_array($dt->format('Y-m-d'), self::BEI_HOLIDAYS_2026, true)) {
+            return 'BEI_HOLIDAY';
         }
 
-        // Market closes officially at 16:00 WIB
-        return $dt->hour >= 16;
+        return null;
     }
 
     /**
@@ -224,5 +257,31 @@ class BeiCalendarService
             'description' => 'Pasar Bursa Tutup di Luar Jam Operasional',
             'timestamp_wib' => $dt->format('Y-m-d H:i:s'),
         ];
+    }
+
+    /**
+     * Get list of trading days between two dates inclusive.
+     *
+     * @return array<int, string> List of 'YYYY-MM-DD'
+     */
+    public function getTradingDaysBetween(CarbonInterface|string $startDate, CarbonInterface|string $endDate): array
+    {
+        $start = ($startDate instanceof CarbonInterface ? $startDate->copy() : Carbon::parse($startDate))->startOfDay();
+        $end = ($endDate instanceof CarbonInterface ? $endDate->copy() : Carbon::parse($endDate))->startOfDay();
+
+        if ($start->gt($end)) {
+            return [];
+        }
+
+        $days = [];
+        $curr = $start->copy();
+        while ($curr->lte($end)) {
+            if ($this->isTradingDay($curr)) {
+                $days[] = $curr->toDateString();
+            }
+            $curr->addDay();
+        }
+
+        return $days;
     }
 }

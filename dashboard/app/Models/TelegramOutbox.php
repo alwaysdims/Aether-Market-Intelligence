@@ -14,6 +14,7 @@ class TelegramOutbox extends Model
     protected $casts = [
         'sent_at' => 'datetime',
         'retry_after' => 'datetime',
+        'due_at' => 'datetime',
         'retry_count' => 'integer',
         'metadata' => 'array',
     ];

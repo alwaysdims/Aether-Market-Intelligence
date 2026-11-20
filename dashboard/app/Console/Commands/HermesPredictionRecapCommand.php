@@ -52,7 +52,17 @@ class HermesPredictionRecapCommand extends Command
 
         if ($this->option('telegram')) {
             $payload = $formatter->formatHorizonRecapMessage($stats, $nowWib);
-            $dedupKey = 'RECAP_'.$nowWib->format('Ymd_H');
+            $chatId = (string) config('services.telegram.chat_id', 'global');
+            $evalPeriodDate = $nowWib->format('Ymd');
+            $cohortHash = substr(md5(json_encode([
+                'forward_total' => $stats['total_signals'] ?? 0,
+                'eval_correct' => $stats['eval_correct'] ?? 0,
+                'eval_incorrect' => $stats['eval_incorrect'] ?? 0,
+                'eval_pending' => $stats['eval_pending'] ?? 0,
+            ])), 0, 8);
+
+            // Granular dedup key: chat_id + strategy/cohort + eval_period + result_version_hash
+            $dedupKey = "RECAP_COHORT_V1_{$chatId}_{$evalPeriodDate}_{$cohortHash}";
             $item = $formatter->enqueueOutbox($dedupKey, 'HORIZON_RECAP', $payload);
             $this->info("Recap successfully enqueued to Telegram Outbox (ID: {$item->id}, DedupKey: {$dedupKey}).");
         }

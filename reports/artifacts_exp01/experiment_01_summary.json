@@ -1,0 +1,56 @@
+{
+  "experiment_id": "SWING_OHLCV_EXP_01",
+  "execution_date_utc": "2026-11-04T13:27:50.695990+00:00",
+  "dataset_hash": "b9dabf986858c801e309557b2f25090121d67909038592565d0da485b2a89caf",
+  "prediction_artifact_hash": "8d78e0b0edf5d6868fb60ca289c4755d2835a98ff9309b4a3ad0ad6ee8449383",
+  "best_hyperparameters": {
+    "C": 0.01,
+    "class_weight": "balanced"
+  },
+  "best_tau_up": 0.38,
+  "evaluation_metrics": {
+    "test_balanced_accuracy": 0.43312876970109276,
+    "test_macro_f1": 0.4115428325775987,
+    "test_macro_roc_auc": 0.6105315937292929,
+    "majority_baseline_balanced_accuracy": 0.3333333333333333,
+    "momentum_baseline_balanced_accuracy": 0.34092594272475063,
+    "confusion_matrix": [
+      [
+        13913,
+        3927,
+        6024
+      ],
+      [
+        10344,
+        6321,
+        13188
+      ],
+      [
+        12206,
+        7505,
+        20080
+      ]
+    ],
+    "bootstrap_maj_ci_low": 0.0809966649588983,
+    "bootstrap_maj_ci_high": 0.11598414455989714,
+    "bootstrap_maj_p_fail": 0.0,
+    "bootstrap_mom_ci_low": 0.046289320315081255,
+    "bootstrap_mom_ci_high": 0.13956162486625595,
+    "bootstrap_mom_p_fail": 0.0
+  },
+  "transaction_simulation": {
+    "total_trades": 24459,
+    "mean_gross_return": -0.012556818182433633,
+    "mean_net_return": -0.03472578060688714,
+    "win_rate": 0.3097019502023795,
+    "total_net_pnl": -849.3578678638526
+  },
+  "acceptance_gates": {
+    "gate_1_bal_acc": false,
+    "gate_2_roc_auc": true,
+    "gate_3_bootstrap": true,
+    "gate_4_net_return": false
+  },
+  "final_verdict": "REJECTED",
+  "duration_seconds": 48.38578724861145
+}

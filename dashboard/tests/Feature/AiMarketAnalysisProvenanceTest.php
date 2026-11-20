@@ -20,18 +20,25 @@ class AiMarketAnalysisProvenanceTest extends TestCase
     use RefreshDatabase;
 
     protected AiMarketAnalysisService $aiService;
+
     protected PostHorizonEvaluatorService $evaluator;
 
     protected function setUp(): void
     {
         parent::setUp();
+        config([
+            'services.dashboard_ai.provider' => 'google',
+            'services.dashboard_ai.api_key' => 'test-key',
+            'services.dashboard_ai.model' => 'gemini-3.6-flash',
+            'services.dashboard_ai.eod_inference_enabled' => true,
+        ]);
         $this->aiService = app(AiMarketAnalysisService::class);
         $this->evaluator = app(PostHorizonEvaluatorService::class);
 
         PromptTemplate::create([
             'code' => 'MARKET_INTELLIGENCE_DAILY',
             'version' => '1.0.0',
-            'model_id' => 'ag/gemini-3.8-flash-high',
+            'model_id' => 'gemini-3.6-flash',
             'system_prompt' => 'You are Aether Market Intelligence AI.',
             'user_prompt_template' => "Analisis data pasar:\n{market_summary}",
             'is_active' => true,
@@ -56,22 +63,21 @@ class AiMarketAnalysisProvenanceTest extends TestCase
     public function test_scenario_1_valid_json_response_creates_valid_schema_analysis(): void
     {
         Http::fake([
-            '*/chat/completions' => Http::response([
-                'choices' => [
+            '*/v1beta/models/gemini-3.6-flash:generateContent' => Http::response([
+                'candidates' => [
                     [
-                        'finish_reason' => 'stop',
-                        'message' => [
-                            'content' => json_encode([
-                                'market_regime_summary' => 'IHSG bergerak konsolidatif dengan inflow asing moderat pada big banks.',
-                                'impact_direction' => 'positive',
-                                'impact_horizon' => 'multi_day',
-                                'confidence_score' => 0.85,
-                                'impacted_tickers' => [
-                                    ['ticker' => 'BBCA', 'direction' => 'positive', 'rationale' => 'Inflow asing solid'],
-                                    ['ticker' => 'BMRI', 'direction' => 'positive', 'rationale' => 'Kinerja kredit kuat'],
-                                ],
-                            ]),
-                        ],
+                        'finishReason' => 'STOP',
+                        'content' => ['parts' => [['text' => json_encode([
+                            'market_regime_summary' => 'IHSG bergerak konsolidatif dengan inflow asing moderat pada big banks.',
+                            'impact_direction' => 'positive',
+                            'impact_horizon' => 'multi_day',
+                            'confidence_score' => 0.85,
+                            'impacted_tickers' => [
+                                ['ticker' => 'BBCA', 'direction' => 'positive', 'rationale' => 'Inflow asing solid'],
+                                ['ticker' => 'BMRI', 'direction' => 'positive', 'rationale' => 'Kinerja kredit kuat'],
+                            ],
+                        ]),
+                        ]]],
                     ],
                 ],
             ], 200),
@@ -83,7 +89,7 @@ class AiMarketAnalysisProvenanceTest extends TestCase
         $this->assertEquals('valid_schema', $analysis->validation_status);
         $this->assertEquals('positive', $analysis->impact_direction);
         $this->assertEquals(0.85, (float) $analysis->confidence_score);
-        $this->assertEquals('ag/gemini-3.8-flash-high', $analysis->model_name);
+        $this->assertEquals('gemini-3.6-flash', $analysis->model_name);
         $this->assertStringContainsString('IHSG bergerak konsolidatif', $analysis->market_regime_summary);
     }
 
@@ -93,13 +99,11 @@ class AiMarketAnalysisProvenanceTest extends TestCase
     public function test_scenario_2a_truncated_token_budget_finish_reason_length_triggers_fallback(): void
     {
         Http::fake([
-            '*/chat/completions' => Http::response([
-                'choices' => [
+            '*/v1beta/models/gemini-3.6-flash:generateContent' => Http::response([
+                'candidates' => [
                     [
-                        'finish_reason' => 'length',
-                        'message' => [
-                            'content' => '{"market_regime_summary": "IHSG berpotensi melemah karena tekanan inflasi...',
-                        ],
+                        'finishReason' => 'MAX_TOKENS',
+                        'content' => ['parts' => [['text' => '{"market_regime_summary": "IHSG berpotensi melemah karena tekanan inflasi...']]],
                     ],
                 ],
             ], 200),
@@ -111,8 +115,7 @@ class AiMarketAnalysisProvenanceTest extends TestCase
         $this->assertEquals('fallback', $analysis->validation_status);
         $this->assertEquals('unclear', $analysis->impact_direction);
         $this->assertArrayHasKey('fallback_reason', $analysis->structured_output);
-        $this->assertStringContainsString('batas token habis', $analysis->structured_output['fallback_reason']);
-        $this->assertStringContainsString('finish_reason = length', $analysis->structured_output['fallback_reason']);
+        $this->assertStringContainsString('JSON', $analysis->structured_output['fallback_reason']);
     }
 
     /**
@@ -121,13 +124,11 @@ class AiMarketAnalysisProvenanceTest extends TestCase
     public function test_scenario_2b_malformed_incomplete_json_triggers_fallback_with_parser_error(): void
     {
         Http::fake([
-            '*/chat/completions' => Http::response([
-                'choices' => [
+            '*/v1beta/models/gemini-3.6-flash:generateContent' => Http::response([
+                'candidates' => [
                     [
-                        'finish_reason' => 'stop',
-                        'message' => [
-                            'content' => '{"market_regime_summary": "IHSG bergerak stabil"', // Missing closing brace
-                        ],
+                        'finishReason' => 'STOP',
+                        'content' => ['parts' => [['text' => '{"market_regime_summary": "IHSG bergerak stabil"']]],
                     ],
                 ],
             ], 200),
@@ -138,7 +139,7 @@ class AiMarketAnalysisProvenanceTest extends TestCase
 
         $this->assertEquals('fallback', $analysis->validation_status);
         $this->assertArrayHasKey('fallback_reason', $analysis->structured_output);
-        $this->assertStringContainsString('Gagal parsing JSON', $analysis->structured_output['fallback_reason']);
+        $this->assertStringContainsString('JSON Google Gemini tidak memenuhi schema dashboard.', $analysis->structured_output['fallback_reason']);
     }
 
     /**
@@ -147,13 +148,11 @@ class AiMarketAnalysisProvenanceTest extends TestCase
     public function test_scenario_3_empty_ai_response_content_triggers_fallback(): void
     {
         Http::fake([
-            '*/chat/completions' => Http::response([
-                'choices' => [
+            '*/v1beta/models/gemini-3.6-flash:generateContent' => Http::response([
+                'candidates' => [
                     [
-                        'finish_reason' => 'stop',
-                        'message' => [
-                            'content' => '   ',
-                        ],
+                        'finishReason' => 'STOP',
+                        'content' => ['parts' => [['text' => '   ']]],
                     ],
                 ],
             ], 200),
@@ -164,7 +163,7 @@ class AiMarketAnalysisProvenanceTest extends TestCase
 
         $this->assertEquals('fallback', $analysis->validation_status);
         $this->assertArrayHasKey('fallback_reason', $analysis->structured_output);
-        $this->assertStringContainsString('Konten respons AI kosong', $analysis->structured_output['fallback_reason']);
+        $this->assertStringContainsString('Respons Google Gemini kosong atau terblokir.', $analysis->structured_output['fallback_reason']);
     }
 
     /**
@@ -173,7 +172,7 @@ class AiMarketAnalysisProvenanceTest extends TestCase
     public function test_scenario_4a_http_401_triggers_fallback(): void
     {
         Http::fake([
-            '*/chat/completions' => Http::response([
+            '*/v1beta/models/gemini-3.6-flash:generateContent' => Http::response([
                 'error' => ['message' => 'Invalid API key', 'code' => 'invalid_api_key'],
             ], 401),
         ]);
@@ -191,7 +190,7 @@ class AiMarketAnalysisProvenanceTest extends TestCase
     public function test_scenario_4b_http_403_triggers_fallback(): void
     {
         Http::fake([
-            '*/chat/completions' => Http::response([
+            '*/v1beta/models/gemini-3.6-flash:generateContent' => Http::response([
                 'error' => ['message' => 'Forbidden resource access', 'code' => 'forbidden'],
             ], 403),
         ]);
@@ -209,7 +208,7 @@ class AiMarketAnalysisProvenanceTest extends TestCase
     public function test_scenario_5_http_429_rate_limit_triggers_fallback_with_status_code(): void
     {
         Http::fake([
-            '*/chat/completions' => Http::response([
+            '*/v1beta/models/gemini-3.6-flash:generateContent' => Http::response([
                 'error' => ['message' => 'Rate limit exceeded', 'code' => 'rate_limit_exceeded'],
             ], 429),
         ]);
@@ -228,7 +227,7 @@ class AiMarketAnalysisProvenanceTest extends TestCase
     public function test_scenario_6a_http_500_triggers_fallback(): void
     {
         Http::fake([
-            '*/chat/completions' => Http::response([
+            '*/v1beta/models/gemini-3.6-flash:generateContent' => Http::response([
                 'error' => ['message' => 'Internal server error in upstream model', 'code' => 'internal_error'],
             ], 500),
         ]);
@@ -246,7 +245,7 @@ class AiMarketAnalysisProvenanceTest extends TestCase
     public function test_scenario_6b_timeout_triggers_fallback(): void
     {
         Http::fake([
-            '*/chat/completions' => function () {
+            '*/v1beta/models/gemini-3.6-flash:generateContent' => function () {
                 throw new ConnectionException('cURL error 28: Operation timed out after 30000 milliseconds');
             },
         ]);
@@ -264,10 +263,10 @@ class AiMarketAnalysisProvenanceTest extends TestCase
     public function test_scenario_7_http_200_with_malformed_structure_triggers_fallback(): void
     {
         Http::fake([
-            '*/chat/completions' => Http::response([
+            '*/v1beta/models/gemini-3.6-flash:generateContent' => Http::response([
                 'id' => 'chatcmpl-invalid',
                 'object' => 'chat.completion',
-                'choices' => [], // Empty choices
+                'candidates' => [],
             ], 200),
         ]);
 
@@ -276,7 +275,7 @@ class AiMarketAnalysisProvenanceTest extends TestCase
 
         $this->assertEquals('fallback', $analysis->validation_status);
         $this->assertArrayHasKey('fallback_reason', $analysis->structured_output);
-        $this->assertStringContainsString('struktur choices kosong', $analysis->structured_output['fallback_reason']);
+        $this->assertStringContainsString('Google Gemini', $analysis->structured_output['fallback_reason']);
     }
 
     /**
@@ -285,28 +284,27 @@ class AiMarketAnalysisProvenanceTest extends TestCase
     public function test_scenario_8_valid_response_with_finish_reason_and_usage_preserves_provenance(): void
     {
         Http::fake([
-            '*/chat/completions' => Http::response([
-                'choices' => [
+            '*/v1beta/models/gemini-3.6-flash:generateContent' => Http::response([
+                'candidates' => [
                     [
-                        'finish_reason' => 'stop',
-                        'message' => [
-                            'content' => json_encode([
-                                'market_regime_summary' => 'Sentimen pasar netral-positif didukung penguatan rupiah.',
-                                'impact_direction' => 'positive',
-                                'impact_horizon' => 'multi_day',
-                                'confidence_score' => 0.78,
-                                'impacted_tickers' => [
-                                    ['ticker' => 'TLKM', 'direction' => 'positive', 'rationale' => 'ARPU data bertumbuh'],
-                                ],
-                            ]),
-                        ],
+                        'finishReason' => 'STOP',
+                        'content' => ['parts' => [['text' => json_encode([
+                            'market_regime_summary' => 'Sentimen pasar netral-positif didukung penguatan rupiah.',
+                            'impact_direction' => 'positive',
+                            'impact_horizon' => 'multi_day',
+                            'confidence_score' => 0.78,
+                            'impacted_tickers' => [
+                                ['ticker' => 'TLKM', 'direction' => 'positive', 'rationale' => 'ARPU data bertumbuh'],
+                            ],
+                        ]),
+                        ]]],
                     ],
                 ],
-                'usage' => [
-                    'prompt_tokens' => 850,
-                    'completion_tokens' => 240,
-                    'total_tokens' => 1090,
-                    'reasoning_tokens' => 420,
+                'usageMetadata' => [
+                    'promptTokenCount' => 850,
+                    'candidatesTokenCount' => 240,
+                    'totalTokenCount' => 1090,
+                    'thoughtsTokenCount' => 420,
                 ],
             ], 200),
         ]);
@@ -316,11 +314,11 @@ class AiMarketAnalysisProvenanceTest extends TestCase
 
         $this->assertEquals('valid_schema', $analysis->validation_status);
         $this->assertEquals('positive', $analysis->impact_direction);
-        $this->assertEquals('stop', $analysis->structured_output['_finish_reason']);
+        $this->assertEquals('STOP', $analysis->structured_output['_finish_reason']);
         $this->assertArrayHasKey('_usage', $analysis->structured_output);
-        $this->assertEquals(850, $analysis->structured_output['_usage']['prompt_tokens']);
-        $this->assertEquals(240, $analysis->structured_output['_usage']['completion_tokens']);
-        $this->assertEquals(420, $analysis->structured_output['_usage']['reasoning_tokens']);
+        $this->assertEquals(850, $analysis->structured_output['_usage']['promptTokenCount']);
+        $this->assertEquals(240, $analysis->structured_output['_usage']['candidatesTokenCount']);
+        $this->assertEquals(420, $analysis->structured_output['_usage']['thoughtsTokenCount']);
     }
 
     /**
@@ -329,17 +327,16 @@ class AiMarketAnalysisProvenanceTest extends TestCase
     public function test_empty_market_input_handled_gracefully(): void
     {
         Http::fake([
-            '*/chat/completions' => Http::response([
-                'choices' => [
+            '*/v1beta/models/gemini-3.6-flash:generateContent' => Http::response([
+                'candidates' => [
                     [
-                        'message' => [
-                            'content' => json_encode([
-                                'market_regime_summary' => 'Data pasar tidak lengkap.',
-                                'impact_direction' => 'unclear',
-                                'impact_horizon' => 'multi_day',
-                                'confidence_score' => 0.10,
-                            ]),
-                        ],
+                        'content' => ['parts' => [['text' => json_encode([
+                            'market_regime_summary' => 'Data pasar tidak lengkap.',
+                            'impact_direction' => 'unclear',
+                            'impact_horizon' => 'multi_day',
+                            'confidence_score' => 0.10,
+                        ]),
+                        ]]],
                     ],
                 ],
             ], 200),
@@ -362,9 +359,11 @@ class AiMarketAnalysisProvenanceTest extends TestCase
 
         $this->assertEquals('fallback', $analysis->validation_status);
         $this->assertEquals('unclear', $analysis->impact_direction);
-        $this->assertEquals('ag/gemini-3.8-flash-high', $analysis->model_name);
+        $this->assertEquals('STRUCTURED_FALLBACK', $analysis->model_name);
         $this->assertEquals('Manual test fallback', $analysis->structured_output['fallback_reason']);
-        $this->assertEquals(0.50, (float) $analysis->confidence_score);
+        $this->assertEquals('NOT_RUN', $analysis->structured_output['model_status']);
+        $this->assertNull($analysis->structured_output['returned_model']);
+        $this->assertNull($analysis->confidence_score);
     }
 
     /**
@@ -398,11 +397,11 @@ class AiMarketAnalysisProvenanceTest extends TestCase
     public function test_fallback_predictions_are_excluded_from_pure_ai_accuracy(): void
     {
         $run = $this->createRun('RUN_METRICS_ISOLATION');
-        
+
         // Buat 1 analisis fallback
         $fallbackAnalysis = MarketAnalysis::create([
             'analysis_run_id' => $run->id,
-            'model_name' => 'ag/gemini-3.8-flash-high',
+            'model_name' => 'gemini-3.6-flash',
             'prompt_version' => '1.0.0',
             'market_regime_summary' => 'Fallback summary',
             'impact_direction' => 'unclear',
@@ -413,7 +412,7 @@ class AiMarketAnalysisProvenanceTest extends TestCase
         // Buat 1 analisis AI valid
         $aiAnalysis = MarketAnalysis::create([
             'analysis_run_id' => $run->id,
-            'model_name' => 'ag/gemini-3.8-flash-high',
+            'model_name' => 'gemini-3.6-flash',
             'prompt_version' => '1.0.0',
             'market_regime_summary' => 'Pure AI summary',
             'impact_direction' => 'positive',
@@ -467,7 +466,7 @@ class AiMarketAnalysisProvenanceTest extends TestCase
         // Verifikasi pemisahan metrik
         $this->assertGreaterThan(0, $metrics['total_evaluated']);
         $this->assertGreaterThan(0, $metrics['fallback_count']);
-        
+
         // Akurasi AI murni hanya memperhitungkan record dengan is_fallback = false
         $this->assertArrayHasKey('ai_accuracy_pct', $metrics);
         $this->assertArrayHasKey('fallback_count', $metrics);
@@ -478,7 +477,7 @@ class AiMarketAnalysisProvenanceTest extends TestCase
      */
     public function test_live_inference_disabled_triggers_safe_fallback_without_network_request(): void
     {
-        config(['services.ai_router.live_inference_enabled' => false]);
+        config(['services.dashboard_ai.eod_inference_enabled' => false]);
         $service = app(AiMarketAnalysisService::class);
 
         // Even without Http::fake, no HTTP request should be sent

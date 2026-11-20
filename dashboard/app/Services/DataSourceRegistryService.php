@@ -6,6 +6,7 @@ use App\Models\DataSource;
 use App\Models\MarketObservation;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class DataSourceRegistryService
@@ -38,20 +39,43 @@ class DataSourceRegistryService
                 ],
             ],
             [
-                'name' => 'IDX Edge Quote Intraday',
+                'name' => 'IDX Edge Quote Intraday (MIXED_BOARD_UNSEPARABLE)',
                 'type' => 'market_data',
                 'data_classification' => 'real_time',
                 'base_url' => 'https://stock.arjum.com',
                 'endpoint' => '/api/price/{code}',
                 'status' => 'quarantined',
                 'is_enabled' => false,
-                'health' => 'healthy',
-                'data_quality' => 'QUARANTINED',
-                'quarantine_reason' => 'Terkontaminasi transaksi Pasar Negosiasi (NG) tanpa filter board; tidak sesuai sebagai harga reguler',
+                'health' => 'quarantined',
+                'data_quality' => 'MIXED_BOARD_UNSEPARABLE',
+                'quarantine_reason' => 'Snapshot mencampur Pasar Reguler (RG), Negosiasi (NG), dan Tunai (TN) tanpa field board_scope atau filter server-side. Dikeluarkan dari seluruh jalur sinyal dan harga RG.',
                 'metadata' => [
+                    'board_scope' => 'MIXED_BOARD_UNSEPARABLE',
                     'quarantined_from' => 'regular_chart_and_signals',
-                    'issue' => 'board_contamination_NG',
-                    'role' => 'Intraday Snapshot (Quarantined)',
+                    'issue' => 'board_contamination_NG_TN',
+                    'role' => 'Canonical Intraday REST Snapshot (Quarantined)',
+                    'reference_count' => 'derived_from_foreign_keys',
+                ],
+            ],
+            [
+                'name' => 'IDX Edge WebSocket Running Trade',
+                'type' => 'real_time_stream',
+                'data_classification' => 'real_time',
+                'base_url' => 'wss://stock.arjum.com',
+                'endpoint' => '/ws/running-trade',
+                'status' => 'active',
+                'is_enabled' => true,
+                'health' => 'active_unverified_board',
+                'data_quality' => 'BOARD_SCOPE_UNVERIFIED',
+                'quarantine_reason' => null,
+                'metadata' => [
+                    'role' => 'Live Trade Event Stream (Single Owner)',
+                    'board_scope' => 'BOARD_SCOPE_UNVERIFIED',
+                    'board_rg_guaranteed' => false,
+                    'has_official_trade_id' => true,
+                    'has_event_timestamp' => true,
+                    'dedup_key' => 'tn (Bounded Ring Buffer 2000)',
+                    'screening_status' => 'BLOCKED_EXTERNAL_CAPABILITY',
                 ],
             ],
             [
@@ -74,6 +98,24 @@ class DataSourceRegistryService
                 ],
             ],
             [
+                'name' => 'IDX Edge Ownership Snapshot',
+                'type' => 'ownership',
+                'data_classification' => 'monthly_snapshot',
+                'base_url' => 'https://stock.arjum.com',
+                'endpoint' => '/api/ownership/stock?code={code}',
+                'status' => 'inactive',
+                'is_enabled' => false,
+                'health' => 'unknown',
+                'data_quality' => 'UNVERIFIED',
+                'quarantine_reason' => 'Provider ownership schema and semantics require authenticated runtime verification before enablement.',
+                'metadata' => [
+                    'threshold' => '>=1%',
+                    'month_year_supported' => true,
+                    'change_pct_mom' => 'NOT_DOCUMENTED',
+                    'role' => 'Ownership Monthly Snapshot',
+                ],
+            ],
+            [
                 'name' => 'IDX Edge Fundamental',
                 'type' => 'fundamental',
                 'data_classification' => 'historical',
@@ -92,48 +134,179 @@ class DataSourceRegistryService
                 ],
             ],
             [
-                'name' => 'Yahoo Finance Daily EOD',
+                'name' => 'Yahoo Finance Daily EOD (Arsip Historis)',
                 'type' => 'market_data',
                 'data_classification' => 'end_of_day',
-                'base_url' => 'https://query1.finance.yahoo.com/v8/finance/chart/',
+                'base_url' => 'https://query1.finance.yahoo.com',
                 'endpoint' => '/v8/finance/chart/{ticker}',
-                'status' => 'active',
-                'is_enabled' => true,
-                'health' => 'healthy',
-                'data_quality' => 'VALID',
-                'quarantine_reason' => null,
+                'status' => 'inactive',
+                'is_enabled' => false,
+                'health' => 'unknown',
+                'data_quality' => 'HISTORICAL_ARCHIVE_ONLY',
+                'quarantine_reason' => 'Jalur operasional Yahoo Finance dinonaktifkan permanen. Dipertahankan murni sebagai arsip read-only.',
                 'metadata' => [
-                    'role' => 'Fallback EOD Source',
+                    'role' => 'Historical Archive Only (Non-operational)',
                 ],
             ],
             [
-                'name' => 'IDX Official Announcements & News',
+                'name' => 'LKBN ANTARA Berita Finansial',
                 'type' => 'news',
-                'data_classification' => 'delayed',
-                'base_url' => 'https://www.idx.co.id',
-                'endpoint' => '/primary/ListedCompany/GetAnnouncement',
+                'data_classification' => 'rss_feed',
+                'base_url' => 'https://www.antaranews.com',
+                'endpoint' => '/rss/ekonomi-finansial.xml',
                 'status' => 'active',
                 'is_enabled' => true,
                 'health' => 'healthy',
                 'data_quality' => 'VALID',
                 'quarantine_reason' => null,
                 'metadata' => [
-                    'role' => 'Official Issuer Announcements & News',
+                    'role' => 'Primary Operational News Feed (LKBN ANTARA)',
+                ],
+            ],
+            [
+                'name' => 'IDX Official Announcements & News (Arsip Dokumen)',
+                'type' => 'news_archive',
+                'data_classification' => 'delayed',
+                'base_url' => 'https://www.idx.co.id',
+                'endpoint' => '/primary/ListedCompany/GetAnnouncement',
+                'status' => 'inactive',
+                'is_enabled' => false,
+                'health' => 'unknown',
+                'data_quality' => 'HISTORICAL_ARCHIVE_ONLY',
+                'quarantine_reason' => 'Arsip pengumuman emiten BEI. Bukan feed berita live operasional.',
+                'metadata' => [
+                    'role' => 'Official Issuer Announcements Archive (Cold)',
                 ],
             ],
             [
                 'name' => 'Index Alpha Broker Summary',
                 'type' => 'broker_summary',
                 'data_classification' => 'end_of_day',
-                'base_url' => 'https://api.indexalpha.id/stocks/broker-summary',
+                'base_url' => 'https://api.indexalpha.id',
                 'endpoint' => '/stocks/broker-summary',
                 'status' => 'inactive',
                 'is_enabled' => false,
                 'health' => 'unknown',
                 'data_quality' => 'DEPRECATED',
-                'quarantine_reason' => 'Dinonaktifkan; digantikan oleh rencana konektor terverifikasi',
+                'quarantine_reason' => 'Dinonaktifkan total; seluruh fitur digantikan IDX Edge PRO',
                 'metadata' => [
                     'role' => 'Legacy Broker Summary (Disabled)',
+                ],
+            ],
+            [
+                'name' => 'IDX Edge Market Cap & Saham Beredar',
+                'type' => 'market_data',
+                'data_classification' => 'end_of_day',
+                'base_url' => 'https://stock.arjum.com',
+                'endpoint' => '/api/market-cap',
+                'status' => 'active',
+                'is_enabled' => true,
+                'health' => 'healthy',
+                'data_quality' => 'VERIFIED_ON_SAMPLE',
+                'quarantine_reason' => null,
+                'metadata' => [
+                    'role' => 'Universe Discovery and Market Cap Registry',
+                ],
+            ],
+            [
+                'name' => 'IDX Edge Akumulasi Broker Historis',
+                'type' => 'broker_summary',
+                'data_classification' => 'end_of_day',
+                'base_url' => 'https://stock.arjum.com',
+                'endpoint' => '/api/broker-accumulation/{code}',
+                'status' => 'active',
+                'is_enabled' => true,
+                'health' => 'healthy',
+                'data_quality' => 'PROVIDER_SUPPLIED',
+                'quarantine_reason' => null,
+                'metadata' => [
+                    'role' => 'Historical Broker Flow Points (Pasar Reguler - RG)',
+                ],
+            ],
+            [
+                'name' => 'IDX Edge Pencarian Saham',
+                'type' => 'search',
+                'data_classification' => 'metadata',
+                'base_url' => 'https://stock.arjum.com',
+                'endpoint' => '/api/search',
+                'status' => 'active',
+                'is_enabled' => true,
+                'health' => 'healthy',
+                'data_quality' => 'VERIFIED_ON_SAMPLE',
+                'quarantine_reason' => null,
+                'metadata' => [
+                    'role' => 'Ticker Autocomplete & Discovery',
+                ],
+            ],
+            [
+                'name' => 'IDX Edge Harga IHSG',
+                'type' => 'market_data',
+                'data_classification' => 'snapshot',
+                'base_url' => 'https://stock.arjum.com',
+                'endpoint' => '/api/price/IHSG',
+                'status' => 'active',
+                'is_enabled' => true,
+                'health' => 'healthy',
+                'data_quality' => 'VERIFIED_ON_SAMPLE',
+                'quarantine_reason' => null,
+                'metadata' => [
+                    'role' => 'IHSG Index Snapshot',
+                    'board_scope' => 'INDEX',
+                    'freshness_basis' => 'provider_data_ts_or_source_date',
+                ],
+            ],
+            [
+                'name' => 'IDX Edge Movers Harian',
+                'type' => 'market_ranking',
+                'data_classification' => 'snapshot',
+                'base_url' => 'https://stock.arjum.com',
+                'endpoint' => '/api/movers?by=chg&n=10',
+                'status' => 'active',
+                'is_enabled' => true,
+                'health' => 'healthy',
+                'data_quality' => 'SCHEMA_VALIDATED_ON_SAMPLE',
+                'quarantine_reason' => null,
+                'metadata' => [
+                    'role' => 'Daily Movers by Change',
+                    'board_scope' => 'UNVERIFIED',
+                    'volume_unit' => 'PROVIDER_LOT_FIELD_UNCONVERTED',
+                ],
+            ],
+            [
+                'name' => 'IDX Edge Insider Transactions',
+                'type' => 'corporate_action',
+                'data_classification' => 'historical',
+                'base_url' => 'https://stock.arjum.com',
+                'endpoint' => '/api/insiders/{code}',
+                'status' => 'active',
+                'is_enabled' => true,
+                'health' => 'healthy',
+                'data_quality' => 'SCHEMA_VALIDATED_ON_SAMPLE',
+                'quarantine_reason' => null,
+                'metadata' => [
+                    'role' => 'Insider Transaction Disclosure',
+                    'board_scope' => 'UNVERIFIED',
+                    'unit' => 'NOT_DOCUMENTED',
+                    'calculation_usage' => 'BLOCKED_UNTIL_UNIT_VALIDATED',
+                ],
+            ],
+            [
+                'name' => 'IDX Edge Chart 60 Seconds',
+                'type' => 'market_data',
+                'data_classification' => 'intraday',
+                'base_url' => 'https://stock.arjum.com',
+                'endpoint' => '/api/chart/{code}?interval=300',
+                'status' => 'active',
+                'is_enabled' => true,
+                'health' => 'healthy',
+                'data_quality' => 'SCHEMA_VALIDATED_ON_SAMPLE',
+                'quarantine_reason' => null,
+                'metadata' => [
+                    'role' => 'Intraday Chart 300 Seconds',
+                    'board_scope' => 'UNVERIFIED',
+                    'volume_unit' => 'NOT_DOCUMENTED',
+                    'interval_contract' => 'REQUESTED_300_PROVIDER_NATIVE_15',
+                    'signal_usage' => 'BLOCKED_DISPLAY_ONLY',
                 ],
             ],
         ];
@@ -141,33 +314,76 @@ class DataSourceRegistryService
         $created = 0;
         $updated = 0;
 
-        foreach ($definitions as $def) {
-            $existing = DataSource::where('name', $def['name'])->first();
-            if (! $existing) {
-                DataSource::create($def);
-                $created++;
-            } else {
-                $existing->update([
-                    'type' => $def['type'],
-                    'data_classification' => $def['data_classification'],
-                    'base_url' => $def['base_url'],
-                    'endpoint' => $def['endpoint'],
-                    'status' => $def['status'],
-                    'is_enabled' => $def['is_enabled'],
-                    'health' => $def['health'],
-                    'data_quality' => $def['data_quality'],
-                    'quarantine_reason' => $def['quarantine_reason'],
-                    'metadata' => array_merge($existing->metadata ?? [], $def['metadata']),
-                ]);
-                $updated++;
+        // Resolve connectors by provider + normalized endpoint + role. IDs are historical data, not identity.
+
+        DB::transaction(function () use ($definitions, &$created, &$updated): void {
+            foreach ($definitions as $def) {
+                $identity = $this->identityKey($def);
+                $existing = DataSource::query()
+                    ->where('base_url', $def['base_url'])
+                    ->where('endpoint', $def['endpoint'])
+                    ->where('type', $def['type'])
+                    ->get()
+                    ->first(fn (DataSource $source): bool => $this->identityKey([
+                        'base_url' => $source->base_url,
+                        'endpoint' => $source->endpoint,
+                        'type' => $source->type,
+                        'metadata' => $source->metadata ?? [],
+                    ]) === $identity);
+
+                if (! $existing) {
+                    $nameOwner = DataSource::where('name', $def['name'])->first();
+                    if ($nameOwner && $this->identityKey([
+                        'base_url' => $nameOwner->base_url,
+                        'endpoint' => $nameOwner->endpoint,
+                        'type' => $nameOwner->type,
+                        'metadata' => $nameOwner->metadata ?? [],
+                    ]) !== $identity) {
+                        throw new \LogicException("Source name collision has different connector identity: {$def['name']}");
+                    }
+                    DataSource::create($def);
+                    $created++;
+                } else {
+                    $existing->update([
+                        'name' => $def['name'],
+                        'type' => $def['type'],
+                        'data_classification' => $def['data_classification'],
+                        'base_url' => $def['base_url'],
+                        'endpoint' => $def['endpoint'],
+                        'status' => $def['status'],
+                        'is_enabled' => $def['is_enabled'],
+                        'health' => $def['health'],
+                        'data_quality' => $def['data_quality'],
+                        'quarantine_reason' => $def['quarantine_reason'],
+                        'metadata' => $def['metadata'],
+                    ]);
+                    $updated++;
+                }
             }
-        }
+        });
 
         return [
             'created' => $created,
             'updated' => $updated,
             'total' => DataSource::count(),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $definition
+     */
+    private function identityKey(array $definition): string
+    {
+        $baseUrl = rtrim(strtolower(trim((string) ($definition['base_url'] ?? ''))), '/');
+        $endpoint = '/'.ltrim(strtolower(trim((string) ($definition['endpoint'] ?? ''))), '/');
+        $role = (string) ($definition['metadata']['role'] ?? '');
+
+        return hash('sha256', json_encode([
+            'provider' => $baseUrl,
+            'endpoint' => $endpoint,
+            'type' => (string) ($definition['type'] ?? ''),
+            'role' => $role,
+        ], JSON_THROW_ON_ERROR));
     }
 
     /** @return Collection<int, DataSource> */
@@ -180,9 +396,17 @@ class DataSourceRegistryService
     {
         $mapping = [
             'history' => 'IDX Edge Histori EOD Reguler',
-            'price' => 'IDX Edge Quote Intraday',
+            'price' => 'IDX Edge Quote Intraday (MIXED_BOARD_UNSEPARABLE)',
             'broker' => 'IDX Edge Broker Summary',
             'fundamental' => 'IDX Edge Fundamental',
+            'market_cap' => 'IDX Edge Market Cap & Saham Beredar',
+            'broker_accumulation' => 'IDX Edge Akumulasi Broker Historis',
+            'search' => 'IDX Edge Pencarian Saham',
+            'price_ihsg' => 'IDX Edge Harga IHSG',
+            'movers' => 'IDX Edge Movers Harian',
+            'insiders' => 'IDX Edge Insider Transactions',
+            'chart' => 'IDX Edge Chart 60 Seconds',
+            'chart_ihsg' => 'IDX Edge Chart 60 Seconds',
         ];
 
         $sourceName = $mapping[$endpointKey] ?? null;
@@ -200,7 +424,28 @@ class DataSourceRegistryService
             return (bool) config("services.idx_edge.endpoints.{$endpointKey}", false);
         }
 
-        return (bool) ($source->is_enabled && $source->status === 'active' && in_array($source->data_quality, ['VALID', 'VERIFIED_ON_SAMPLE'], true));
+        // Strict multi-factor authorization check:
+        // 1. Must be enabled by administrator
+        if (! $source->is_enabled) {
+            return false;
+        }
+
+        // 2. Must be actively operational (not disabled or archived)
+        if ($source->status !== 'active') {
+            return false;
+        }
+
+        // 3. Quarantine check: quarantined sources (e.g. quote intraday contaminated by NG trades) are strictly rejected
+        if ($source->quarantine_reason !== null || $source->health === 'quarantined' || $endpointKey === 'price') {
+            return false;
+        }
+
+        // 4. Validation & Provenance: display-only rankings may use a schema-validated sample.
+        if ($endpointKey === 'movers' && $source->data_quality === 'SCHEMA_VALIDATED_ON_SAMPLE') {
+            return true;
+        }
+
+        return in_array($source->data_quality, ['VALID', 'VERIFIED_ON_SAMPLE', 'PROVIDER_SUPPLIED'], true);
     }
 
     /**
@@ -217,12 +462,12 @@ class DataSourceRegistryService
                 return [
                     'effective_enabled' => false,
                     'badge' => 'BLOCKED_NO_KEY',
-                    'label' => 'DIBLOKIR (KREDENSIAL TIDAK TERPASANG)',
+                    'label' => 'DIBLOKIR (KREDENSIAL KOSONG)',
                     'reason' => 'Kredensial API key IDX Edge kosong atau belum terpasang di runtime.',
                 ];
             }
 
-            if ($source->data_quality === 'QUARANTINED') {
+            if ($source->status === 'quarantined' || in_array($source->data_quality, ['QUARANTINED', 'MIXED_BOARD_UNSEPARABLE'], true)) {
                 return [
                     'effective_enabled' => false,
                     'badge' => 'QUARANTINED',
@@ -235,45 +480,70 @@ class DataSourceRegistryService
                 return [
                     'effective_enabled' => false,
                     'badge' => 'PENDING_CANARY',
-                    'label' => 'DITAHAN (CANARY PENDING)',
-                    'reason' => $source->quarantine_reason ?? 'Belum diverifikasi canary.',
+                    'label' => 'DITAHAN (BELUM TERVERIFIKASI)',
+                    'reason' => $source->quarantine_reason ?? 'Belum diverifikasi pada sampel data.',
                 ];
             }
 
-            if ($source->is_enabled && $source->status === 'active' && in_array($source->data_quality, ['VALID', 'VERIFIED_ON_SAMPLE'], true)) {
+            if ($source->is_enabled && $source->status === 'active') {
                 $label = 'SIAP (TERKONTROL)';
-                if (str_contains($source->name, 'Broker')) {
+                $reason = 'Tervalidasi pada sampel operasional. Diizinkan untuk sinkronisasi terkelola.';
+                if (str_contains($source->name, 'Broker Summary')) {
                     $label = 'SIAP (TERKONTROL BROKER RG)';
+                    $reason = 'Tervalidasi pada sampel (Pasar Reguler - RG). Kuota dan rate limiter dihormati.';
                 } elseif (str_contains($source->name, 'Fundamental')) {
                     $label = 'SIAP (TERKONTROL FUNDAMENTAL)';
+                    $reason = 'Tervalidasi pada laporan keuangan emiten resmi (Income/Balance/CashFlow).';
+                } elseif (str_contains($source->name, 'Akumulasi Broker Historis')) {
+                    $label = 'SIAP (FLOW HISTORIS RG)';
+                    $reason = 'Tersedia dari provider (data time-series akumulasi broker RG).';
                 } elseif (str_contains($source->name, 'Histori')) {
-                    $label = 'SIAP (TERKONTROL EOD)';
+                    $label = 'SIAP (OPERASIONAL EOD)';
+                    $reason = 'Sumber primer EOD terverifikasi (nominal unadjusted & provider back-adjusted).';
                 }
 
                 return [
                     'effective_enabled' => true,
                     'badge' => 'READY_CONTROLLED',
                     'label' => $label,
-                    'reason' => 'Tervalidasi pada sampel (RG/Audit). Diizinkan untuk sinkronisasi terkontrol.',
+                    'reason' => $reason,
                 ];
             }
         }
 
-        if ($source->name === 'Yahoo Finance Daily EOD') {
+        if (str_contains($source->name, 'Yahoo Finance')) {
             return [
-                'effective_enabled' => (bool) $source->is_enabled,
-                'badge' => 'ACTIVE_FALLBACK',
-                'label' => 'AKTIF (FALLBACK EOD)',
-                'reason' => 'Sumber fallback aktif untuk kontinuitas operasional.',
+                'effective_enabled' => false,
+                'badge' => 'HISTORICAL_ARCHIVE',
+                'label' => 'ARSIP HISTORIS (NON-OPERASIONAL)',
+                'reason' => 'Dinonaktifkan total dari seluruh jalur pengambilan aktif. Dipertahankan murni sebagai arsip audit historis.',
             ];
         }
 
-        if ($source->name === 'IDX Official Announcements & News') {
+        if (str_contains($source->name, 'LKBN ANTARA')) {
             return [
-                'effective_enabled' => (bool) $source->is_enabled,
-                'badge' => 'ACTIVE_OFFICIAL',
-                'label' => 'AKTIF (PENGUMUMAN BEI)',
-                'reason' => 'Sumber resmi pengumuman dan berita emiten BEI.',
+                'effective_enabled' => true,
+                'badge' => 'ACTIVE_NEWS_FEED',
+                'label' => 'AKTIF (FEED BERITA RESMI)',
+                'reason' => 'Feed berita resmi ekonomi & finansial operasional aktif.',
+            ];
+        }
+
+        if (str_contains($source->name, 'IDX Official Announcements')) {
+            return [
+                'effective_enabled' => false,
+                'badge' => 'HISTORICAL_ARCHIVE',
+                'label' => 'ARSIP PENGUMUMAN (COLD)',
+                'reason' => 'Arsip pengumuman emiten BEI. Bukan feed berita live operasional.',
+            ];
+        }
+
+        if (str_contains($source->name, 'Index Alpha')) {
+            return [
+                'effective_enabled' => false,
+                'badge' => 'DEPRECATED_LEGACY',
+                'label' => 'DEPRECATED (NONAKTIF)',
+                'reason' => 'Dinonaktifkan permanen; seluruh fungsi digantikan oleh IDX Edge PRO.',
             ];
         }
 
@@ -282,15 +552,15 @@ class DataSourceRegistryService
                 'effective_enabled' => false,
                 'badge' => 'DISABLED_LEGACY',
                 'label' => 'NONAKTIF',
-                'reason' => $source->quarantine_reason ?? 'Sumber nonaktif.',
+                'reason' => $source->quarantine_reason ?? 'Konektor sumber data tidak aktif.',
             ];
         }
 
         return [
             'effective_enabled' => (bool) $source->is_enabled,
-            'badge' => strtoupper($source->status),
-            'label' => strtoupper($source->status),
-            'reason' => $source->quarantine_reason ?? '-',
+            'badge' => $source->is_enabled ? 'ACTIVE' : 'INACTIVE',
+            'label' => $source->is_enabled ? 'AKTIF' : 'NONAKTIF',
+            'reason' => 'Status sumber data mengikuti konfigurasi database.',
         ];
     }
 

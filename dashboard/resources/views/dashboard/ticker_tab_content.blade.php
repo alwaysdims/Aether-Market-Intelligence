@@ -3,40 +3,108 @@
             <!-- Left 2 Cols: Profile, Price/Volume Chart & Stats -->
             <div class="lg:col-span-2 space-y-6">
 
-                <!-- Price & Volume Historical Chart -->
-                <div class="bg-[#0A213D] border border-[#F5F1E8]/10 rounded-lg p-5 space-y-4">
-                    <div class="flex items-center justify-between border-b border-[#F5F1E8]/10 pb-3">
+                <!-- Price & Volume Historical Chart.js Interactive Suite -->
+                <div class="bg-[#0A213D] border border-[#F5F1E8]/10 rounded-lg p-5 space-y-4" id="chartSuiteContainer">
+                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-[#F5F1E8]/10 pb-3">
                         <div>
-                            <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-[#E5C49B]">
-                                Grafik Harga & Volume Historis (30 Sesi Terakhir)
-                            </h3>
-                            <p class="text-[11px] text-[#F5F1E8]/50 mt-0.5">
-                                Visualisasi data bar historis aktual bersumber dari basis data pasar terverifikasi.
+                            <div class="flex items-center space-x-2">
+                                <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-[#E5C49B]">
+                                    Grafik Interaktif Candlestick & Indikator
+                                </h3>
+                                <span id="chartModeBadge" class="text-[9px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-500/30">
+                                    ADJUSTED (Back-adjusted)
+                                </span>
+                            </div>
+                            <p id="chartMarketNotice" class="text-[11px] text-[#F5F1E8]/60 mt-1 font-mono">
+                                Memuat data historis...
                             </p>
                         </div>
-                        <span class="text-[10px] font-mono text-[#E5C49B] bg-[#0D2B4E] border border-[#E5C49B]/30 px-2.5 py-1 rounded">
-                            {{ $recentBars->count() }} BAR TERSEDIA
-                        </span>
+
+                        <!-- Controls Toolbar -->
+                        <div class="flex flex-wrap items-center gap-2 text-xs font-mono">
+                            <!-- Timeframe Range -->
+                            <div class="inline-flex rounded-md shadow-xs bg-[#05152B] p-0.5 border border-[#F5F1E8]/10" id="rangeBtnGroup">
+                                <button type="button" data-range="1D" class="chart-range-btn px-2.5 py-1 rounded text-[10px] font-bold transition text-[#F5F1E8]/60 hover:text-[#F5F1E8]">1D</button>
+                                <button type="button" data-range="1M" class="chart-range-btn px-2.5 py-1 rounded text-[10px] font-bold transition bg-[#E5C49B] text-[#05152B]">1M</button>
+                                <button type="button" data-range="3M" class="chart-range-btn px-2.5 py-1 rounded text-[10px] font-bold transition text-[#F5F1E8]/60 hover:text-[#F5F1E8]">3M</button>
+                                <button type="button" data-range="6M" class="chart-range-btn px-2.5 py-1 rounded text-[10px] font-bold transition text-[#F5F1E8]/60 hover:text-[#F5F1E8]">6M</button>
+                                <button type="button" data-range="1Y" class="chart-range-btn px-2.5 py-1 rounded text-[10px] font-bold transition text-[#F5F1E8]/60 hover:text-[#F5F1E8]">1Y</button>
+                            </div>
+
+                            <!-- Adjustment Mode -->
+                            <div class="inline-flex rounded-md shadow-xs bg-[#05152B] p-0.5 border border-[#F5F1E8]/10" id="adjModeGroup">
+                                <button type="button" data-mode="adjusted" class="chart-mode-btn px-2 py-1 rounded text-[10px] font-bold transition bg-[#0A213D] text-[#E5C49B] border border-[#E5C49B]/30">Adj</button>
+                                <button type="button" data-mode="raw" class="chart-mode-btn px-2 py-1 rounded text-[10px] font-bold transition text-[#F5F1E8]/50 hover:text-[#F5F1E8]">Raw</button>
+                            </div>
+                        </div>
                     </div>
 
-                    @if($recentBars->isNotEmpty())
-                        <div class="relative w-full">
-                            <canvas id="priceVolumeChart" class="w-full h-64 rounded bg-[#05152B] border border-[#F5F1E8]/5 block"></canvas>
+                    <!-- Indicator Toggles & Sub-panel Selector -->
+                    <div class="flex flex-wrap items-center justify-between gap-2 text-[10px] font-mono pt-1 border-b border-[#F5F1E8]/5 pb-2">
+                        <div class="flex items-center space-x-2" id="maToggles">
+                            <span class="text-[#F5F1E8]/40">Overlay:</span>
+                            <label class="inline-flex items-center space-x-1 cursor-pointer">
+                                <input type="checkbox" id="toggleSma20" checked class="form-checkbox h-3 w-3 text-amber-400 rounded bg-[#05152B] border-amber-400/40">
+                                <span class="text-amber-300 font-bold">SMA 20</span>
+                            </label>
+                            <label class="inline-flex items-center space-x-1 cursor-pointer">
+                                <input type="checkbox" id="toggleSma50" checked class="form-checkbox h-3 w-3 text-cyan-400 rounded bg-[#05152B] border-cyan-400/40">
+                                <span class="text-cyan-300 font-bold">SMA 50</span>
+                            </label>
+                            <label class="inline-flex items-center space-x-1 cursor-pointer">
+                                <input type="checkbox" id="toggleSma200" checked class="form-checkbox h-3 w-3 text-rose-400 rounded bg-[#05152B] border-rose-400/40">
+                                <span class="text-rose-300 font-bold">SMA 200</span>
+                            </label>
                         </div>
-                        <div class="flex items-center justify-between text-[10px] font-mono text-[#F5F1E8]/50 pt-1">
-                            <span>Sesi Awal: {{ $recentBars->first()->bar_date ? $recentBars->first()->bar_date->format('d M Y') : '-' }}</span>
-                            <span class="flex items-center space-x-3">
-                                <span class="inline-flex items-center"><span class="w-2.5 h-2.5 bg-emerald-400 rounded-sm mr-1"></span> Close &ge; Open</span>
-                                <span class="inline-flex items-center"><span class="w-2.5 h-2.5 bg-rose-400 rounded-sm mr-1"></span> Close &lt; Open</span>
-                            </span>
-                            <span>Sesi Terakhir: {{ $recentBars->last()->bar_date ? $recentBars->last()->bar_date->format('d M Y') : '-' }}</span>
+
+                        <div class="flex items-center space-x-1" id="subPanelGroup">
+                            <span class="text-[#F5F1E8]/40 mr-1">Panel:</span>
+                            <button type="button" data-sub="volume" class="sub-tab-btn px-2 py-0.5 rounded text-[10px] font-bold bg-[#E5C49B] text-[#05152B]">Volume</button>
+                            <button type="button" data-sub="rsi" class="sub-tab-btn px-2 py-0.5 rounded text-[10px] font-bold text-[#F5F1E8]/60 hover:text-[#F5F1E8] bg-[#05152B]">RSI(14)</button>
+                            <button type="button" data-sub="macd" class="sub-tab-btn px-2 py-0.5 rounded text-[10px] font-bold text-[#F5F1E8]/60 hover:text-[#F5F1E8] bg-[#05152B]">MACD</button>
+                            <button type="button" data-sub="broker" class="sub-tab-btn px-2 py-0.5 rounded text-[10px] font-bold text-[#F5F1E8]/60 hover:text-[#F5F1E8] bg-[#05152B]">Akumulasi Broker</button>
                         </div>
-                    @else
-                        <div class="bg-[#05152B] border border-[#F5F1E8]/10 rounded p-8 text-center space-y-2">
-                            <p class="text-xs font-mono text-[#F5F1E8]/50">DATA_NOT_AVAILABLE</p>
-                            <p class="text-xs text-[#F5F1E8]/60">Data bar historis belum tersedia untuk emiten ini. Menunggu sinkronisasi pipeline EOD bursa.</p>
+                    </div>
+
+                    <!-- Canvases -->
+                    <div class="space-y-2">
+                        <!-- Main Candlestick Chart -->
+                        <div class="relative w-full h-[280px] bg-[#05152B] rounded border border-[#F5F1E8]/10 p-2">
+                            <canvas id="mainPriceChartCanvas" class="w-full h-full block"></canvas>
                         </div>
-                    @endif
+
+                        <!-- Sub-Indicator Chart (Volume / RSI / MACD / Broker) -->
+                        <div class="relative w-full h-[140px] bg-[#05152B] rounded border border-[#F5F1E8]/10 p-2">
+                            <canvas id="subIndicatorChartCanvas" class="w-full h-full block"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Selected Candle OHLC -->
+                    <div id="selectedCandleReadout" class="grid grid-cols-2 sm:grid-cols-6 gap-2 rounded border border-[#F5F1E8]/10 bg-[#05152B] p-2 text-[10px] font-mono" aria-live="polite">
+                        <span class="col-span-2 sm:col-span-1 text-[#E5C49B]">Candle terakhir</span><span>O: <b data-ohlc="open">N/A</b></span><span>H: <b data-ohlc="high">N/A</b></span><span>L: <b data-ohlc="low">N/A</b></span><span>C: <b data-ohlc="close">N/A</b></span><span>Vol: <b data-ohlc="volume">N/A</b></span>
+                    </div>
+
+                    <!-- Footer Info Bar -->
+                    <div class="flex flex-wrap items-center justify-between text-[10px] font-mono text-[#F5F1E8]/50 pt-1">
+                        <span id="chartFooterProvenance">Sumber: API IDX Edge PRO (Pasar Reguler - RG)</span>
+                        <div class="flex items-center space-x-4" id="chartFooterMetrics">
+                            <span>ATR (14): <strong id="footerAtrVal" class="text-[#F5F1E8]">-</strong></span>
+                            <span>RSI (14): <strong id="footerRsiVal" class="text-[#F5F1E8]">-</strong></span>
+                        </div>
+                    </div>
+
+                    <!-- Broker Summary Details Table (Visible when Broker sub-panel active) -->
+                    <div id="brokerSummaryDetails" class="hidden space-y-3 pt-3 border-t border-[#F5F1E8]/10" aria-live="polite">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-[10px] font-mono">
+                            <label class="space-y-1"><span class="text-[#F5F1E8]/50">Dari</span><input id="brokerStartDate" type="date" class="w-full rounded bg-[#05152B] border border-[#F5F1E8]/15 px-2 py-1 text-[#F5F1E8]"></label>
+                            <label class="space-y-1"><span class="text-[#F5F1E8]/50">Sampai</span><input id="brokerEndDate" type="date" class="w-full rounded bg-[#05152B] border border-[#F5F1E8]/15 px-2 py-1 text-[#F5F1E8]"></label>
+                            <label class="space-y-1"><span class="text-[#F5F1E8]/50">Top broker</span><select id="brokerTop" class="w-full rounded bg-[#05152B] border border-[#F5F1E8]/15 px-2 py-1 text-[#F5F1E8]"><option value="3" selected>3</option><option value="5">5</option><option value="1">1</option></select></label>
+                            <label class="space-y-1"><span class="text-[#F5F1E8]/50">Broker kode</span><input id="brokerCodes" type="text" placeholder="BK,ZP,AK" class="w-full rounded bg-[#05152B] border border-[#F5F1E8]/15 px-2 py-1 text-[#F5F1E8]"></label>
+                            <button id="brokerSummaryRefresh" type="button" class="rounded bg-[#E5C49B] px-2 py-1 font-bold text-[#05152B] focus:outline-none focus:ring-2 focus:ring-[#E5C49B]">Muat tren</button>
+                        </div>
+                        <div id="brokerSummaryStatus" class="text-[10px] text-[#F5F1E8]/50"></div>
+                        <div id="brokerSummaryTable" class="max-h-72 overflow-auto rounded border border-[#F5F1E8]/10"></div>
+                    </div>
                 </div>
 
                 <!-- Profil Perusahaan -->
@@ -67,7 +135,7 @@
 
                 <!-- Snapshot Harga Sesi Terakhir -->
                 <div class="bg-[#0A213D] border border-[#F5F1E8]/10 rounded-lg p-5 space-y-3">
-                    <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-[#E5C49B]">Statistik Harga Sesi Terakhir (EOD Final)</h3>
+                    <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-[#E5C49B]">Statistik Harga Sesi Terakhir</h3>
                     @if($latestObs)
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
                             <div class="bg-[#0D2B4E] p-2.5 rounded">
@@ -93,54 +161,21 @@
                 </div>
             </div>
 
-            <!-- Right Column: Audit Kelengkapan & Kualitas Data -->
+            <!-- Right Column: Technical decision panel -->
             <div class="space-y-6">
                 <div class="bg-[#0A213D] border border-[#F5F1E8]/10 rounded-lg p-5 space-y-4">
-                    <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-[#E5C49B]">Audit Kelengkapan Data</h3>
-                    <div class="space-y-2.5 text-xs">
-                        <div class="flex items-center justify-between p-2 rounded bg-[#0D2B4E]">
-                            <span>Riwayat Harga EOD Final</span>
-                            <span class="font-mono text-xs {{ $latestObs ? 'text-emerald-400' : 'text-rose-400' }}">
-                                {{ $latestObs ? 'TERSEDIA' : 'TIDAK TERSEDIA' }}
-                            </span>
+                    <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-[#E5C49B]">Teknikal & Support / Resistance</h3>
+                    @if($technical)
+                        <div class="grid grid-cols-2 gap-3 text-xs font-mono">
+                            <div class="bg-[#0D2B4E] p-3 rounded"><span class="text-[10px] text-[#F5F1E8]/40 block">SUPPORT</span><strong class="text-[#E5C49B]">{{ $technical->support_price !== null ? 'Rp '.number_format($technical->support_price, 0, ',', '.') : 'N/A' }}</strong></div>
+                            <div class="bg-[#0D2B4E] p-3 rounded"><span class="text-[10px] text-[#F5F1E8]/40 block">RESISTANCE</span><strong class="text-[#E5C49B]">{{ $technical->resistance_price !== null ? 'Rp '.number_format($technical->resistance_price, 0, ',', '.') : 'N/A' }}</strong></div>
+                            <div class="bg-[#0D2B4E] p-3 rounded"><span class="text-[10px] text-[#F5F1E8]/40 block">RSI (14)</span><strong class="text-cyan-300">{{ $technical->rsi_14 !== null ? number_format($technical->rsi_14, 2) : 'N/A' }}</strong></div>
+                            <div class="bg-[#0D2B4E] p-3 rounded"><span class="text-[10px] text-[#F5F1E8]/40 block">MACD</span><strong class="text-[#F5F1E8]">{{ $technical->macd !== null ? number_format($technical->macd, 2) : 'N/A' }}</strong></div>
                         </div>
-                        <div class="flex items-center justify-between p-2 rounded bg-[#0D2B4E]">
-                            <span>Histori >= 20 Bar (SMA20)</span>
-                            <span class="font-mono text-xs {{ $recentBars->count() >= 20 ? 'text-emerald-400' : 'text-amber-400' }}">
-                                {{ $recentBars->count() >= 20 ? 'TERPENUHI (' . $recentBars->count() . 'B)' : 'BELUM CUKUP (' . $recentBars->count() . 'B)' }}
-                            </span>
-                        </div>
-                        <div class="flex items-center justify-between p-2 rounded bg-[#0D2B4E]">
-                            <span>Histori >= 50 Bar (SMA50)</span>
-                            <span class="font-mono text-xs {{ $recentBars->count() >= 50 ? 'text-emerald-400' : 'text-amber-400' }}">
-                                {{ $recentBars->count() >= 50 ? 'TERPENUHI' : 'BELUM CUKUP' }}
-                            </span>
-                        </div>
-                        <div class="flex items-center justify-between p-2 rounded bg-[#0D2B4E]">
-                            <span>Histori >= 200 Bar (SMA200)</span>
-                            <span class="font-mono text-xs {{ $recentBars->count() >= 200 ? 'text-emerald-400' : 'text-amber-400' }}">
-                                {{ $recentBars->count() >= 200 ? 'TERPENUHI' : 'BELUM CUKUP' }}
-                            </span>
-                        </div>
-                        <div class="flex items-center justify-between p-2 rounded bg-[#0D2B4E]">
-                            <span>1Y Drawdown Terhitung</span>
-                            <span class="font-mono text-xs {{ ($technical && $technical->max_drawdown_1y_pct !== null) ? 'text-cyan-400' : 'text-amber-400' }}">
-                                {{ ($technical && $technical->max_drawdown_1y_pct !== null) ? sprintf('%.2f%%', $technical->max_drawdown_1y_pct) : 'PROVISIONAL' }}
-                            </span>
-                        </div>
-                        <div class="flex items-center justify-between p-2 rounded bg-[#0D2B4E]">
-                            <span>Laporan Keuangan Fiskal</span>
-                            <span class="font-mono text-xs {{ $fundamentals->isNotEmpty() ? 'text-emerald-400' : 'text-rose-400' }}">
-                                {{ $fundamentals->isNotEmpty() ? $fundamentals->count() . ' Periode' : 'BELUM TERSEDIA' }}
-                            </span>
-                        </div>
-                        <div class="flex items-center justify-between p-2 rounded bg-[#0D2B4E]">
-                            <span>Sintesis AI Gemini</span>
-                            <span class="font-mono text-xs {{ $latestAnalysis ? 'text-[#E5C49B]' : 'text-[#F5F1E8]/40' }}">
-                                {{ $latestAnalysis ? 'TERSEDIA' : 'MENUNGGU RISET' }}
-                            </span>
-                        </div>
-                    </div>
+                        <p class="text-[10px] text-[#F5F1E8]/50 font-mono">As-of {{ data_get($technical->data_quality_flags, 'as_of_date', 'N/A') }} · {{ data_get($technical->data_quality_flags, 'input_bars', $totalHistoryBars) }} input bars · interval 1d</p>
+                    @else
+                        <p class="text-xs text-[#F5F1E8]/50 py-4 text-center font-mono">DATA_NOT_AVAILABLE — Metrik teknikal belum tersedia.</p>
+                    @endif
                 </div>
 
                 <!-- Quick Valuations Card -->
@@ -170,6 +205,8 @@
                     @endif
                 </div>
             </div>
+        <div class="mt-6">
+            @include('dashboard.ticker_insiders')
         </div>
     @endif
 
@@ -187,36 +224,82 @@
                         <table class="w-full text-left text-xs text-[#F5F1E8]">
                             <thead class="bg-[#071C35] text-[#F5F1E8]/50 uppercase font-mono text-[10px]">
                                 <tr>
-                                    <th class="p-2.5">Waktu Keputusan</th>
-                                    <th class="p-2.5">Model ID</th>
-                                    <th class="p-2.5">Harga Acuan</th>
+                                    <th class="p-2.5">Signal / Pred ID</th>
+                                    <th class="p-2.5">Asal / Model</th>
+                                    <th class="p-2.5">Waktu Publikasi</th>
+                                    <th class="p-2.5">Harga Acuan vs Terkini</th>
                                     <th class="p-2.5">Arah Sinyal</th>
-                                    <th class="p-2.5">Probabilitas Naik/Turun</th>
-                                    <th class="p-2.5">Horizon Evaluasi</th>
+                                    <th class="p-2.5">Target & Batas</th>
+                                    <th class="p-2.5">Jatuh Tempo</th>
                                     <th class="p-2.5">Status Evaluasi</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-[#F5F1E8]/5">
                                 @foreach($signals as $sig)
+                                    @php
+                                        $currPrice = $latestObs?->close_price ?? $sig->reference_price;
+                                        $priceDiffPct = $sig->reference_price > 0 ? round((($currPrice - $sig->reference_price) / $sig->reference_price) * 100, 2) : 0;
+                                    @endphp
                                     <tr class="hover:bg-[#0D2B4E]/60 transition">
-                                        <td class="p-2.5 font-mono text-[#F5F1E8]/70">{{ $sig->decision_timestamp ? $sig->decision_timestamp->timezone('Asia/Jakarta')->format('Y-m-d H:i') : '-' }}</td>
-                                        <td class="p-2.5 font-mono text-[#E5C49B]">{{ $sig->model_id ?? 'ag/gemini-3.8-flash-high' }}</td>
-                                        <td class="p-2.5 font-mono tabular-nums">Rp {{ number_format($sig->reference_price ?? 0, 0, ',', '.') }}</td>
+                                        <td class="p-2.5 font-mono text-[#E5C49B]">
+                                            <span class="font-bold">{{ $sig->prediction_id }}</span>
+                                            @if($sig->evidence_snapshot_id)
+                                                <span class="text-[9px] text-[#F5F1E8]/40 block">Evidence #{{ $sig->evidence_snapshot_id }}</span>
+                                            @endif
+                                        </td>
+                                        <td class="p-2.5 font-mono text-[#F5F1E8]/80">
+                                            @if(str_starts_with($sig->model_name ?? '', 'TELEGRAM_') || ($sig->metadata['origin'] ?? '') === 'TELEGRAM_TRADING_PLAN')
+                                                <span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[#E5C49B]/20 text-[#E5C49B] border border-[#E5C49B]/30 inline-block mb-0.5">
+                                                    TELEGRAM {{ $sig->metadata['plan_type'] ?? 'PLAN' }}
+                                                </span>
+                                                <span class="text-[9px] text-[#F5F1E8]/40 block">{{ $sig->model_version ?? 'v1.1' }}</span>
+                                            @else
+                                                <span>{{ $sig->model_name ?? ($sig->metadata['source'] ?? 'RULE_SCREENING') }}</span>
+                                                <span class="text-[9px] text-[#F5F1E8]/40 block">v{{ $sig->model_version ?? '1.0' }}</span>
+                                            @endif
+                                        </td>
+                                        <td class="p-2.5 font-mono text-[#F5F1E8]/70">
+                                            {{ $sig->published_at ? $sig->published_at->timezone('Asia/Jakarta')->format('Y-m-d H:i') : ($sig->decision_timestamp ? $sig->decision_timestamp->timezone('Asia/Jakarta')->format('Y-m-d H:i') : '-') }}
+                                            @if($sig->telegram_message_id)
+                                                <span class="text-[9px] text-emerald-400 block font-semibold">Tg Receipt #{{ $sig->telegram_message_id }}</span>
+                                            @elseif(($sig->metadata['contract_provenance'] ?? '') === 'RETROSPECTIVE_RECONCILIATION')
+                                                <span class="text-[9px] text-purple-300 block font-semibold">Audit Retrospektif (Bukan Forward)</span>
+                                            @elseif(($sig->metadata['delivery_status'] ?? '') === 'QUEUED')
+                                                <span class="text-[9px] text-amber-400 block font-semibold">Outbox #{{ $sig->metadata['outbox_id'] ?? '?' }} (Antre)</span>
+                                            @endif
+                                        </td>
+                                        <td class="p-2.5 font-mono tabular-nums">
+                                            <span>Rp {{ number_format($sig->reference_price ?? 0, 0, ',', '.') }}</span>
+                                            <span class="text-[10px] block {{ $priceDiffPct >= 0 ? 'text-emerald-400' : 'text-rose-400' }}">
+                                                Terkini: Rp {{ number_format($currPrice, 0, ',', '.') }} ({{ $priceDiffPct >= 0 ? '+' : '' }}{{ $priceDiffPct }}%)
+                                            </span>
+                                        </td>
                                         <td class="p-2.5 font-bold {{ $sig->direction === 'UP' ? 'text-emerald-400' : ($sig->direction === 'DOWN' ? 'text-rose-400' : 'text-[#F5F1E8]/60') }}">
                                             {{ $sig->direction ?? 'NO_SIGNAL' }}
                                         </td>
-                                        <td class="p-2.5 font-mono tabular-nums text-xs">
-                                            @if($sig->probability_up !== null)
-                                                {{ number_format($sig->probability_up * 100, 1) }}% / {{ number_format($sig->probability_down * 100, 1) }}%
-                                            @else
-                                                <span class="text-[#F5F1E8]/40">N/A</span>
+                                        <td class="p-2.5 font-mono text-[11px] tabular-nums">
+                                            @if($sig->target_price)
+                                                <span class="text-emerald-300 block">Tgt: Rp {{ number_format($sig->target_price, 0, ',', '.') }}</span>
+                                            @endif
+                                            @if($sig->invalidation_price)
+                                                <span class="text-rose-300 block">Inv: Rp {{ number_format($sig->invalidation_price, 0, ',', '.') }}</span>
+                                            @endif
+                                            @if(! $sig->target_price && ! $sig->invalidation_price)
+                                                <span class="text-[#F5F1E8]/40">Horizon Only</span>
                                             @endif
                                         </td>
-                                        <td class="p-2.5 font-mono text-[#F5F1E8]/60">{{ $sig->evaluation_due_date ? $sig->evaluation_due_date->format('Y-m-d') : 'T+5 (5 Hari Bursa)' }}</td>
+                                        <td class="p-2.5 font-mono text-[#F5F1E8]/60">
+                                            {{ $sig->evaluation_due_date ? $sig->evaluation_due_date->format('Y-m-d') : 'T+5' }}
+                                        </td>
                                         <td class="p-2.5">
-                                            <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-[#0D2B4E] text-[#F5F1E8]/70 border border-[#F5F1E8]/10">
-                                                {{ $sig->monitoring_status ?? 'PENDING' }}
-                                            </span>
+                                            <div class="space-y-0.5 font-mono">
+                                                <span class="px-2 py-0.5 rounded text-[10px] block text-center {{ str_contains($sig->evaluation_status ?? '', 'PROVISIONAL') ? 'bg-amber-950/80 text-amber-300 border border-amber-500/30' : ($sig->evaluation_status === 'EVALUATED_CORRECT' ? 'bg-emerald-950/80 text-emerald-300 border border-emerald-500/30' : ($sig->evaluation_status === 'EVALUATED_INCORRECT' ? 'bg-rose-950/80 text-rose-300 border border-rose-500/30' : 'bg-[#0D2B4E] text-[#F5F1E8]/70 border border-[#F5F1E8]/10')) }}">
+                                                    {{ str_contains($sig->evaluation_status ?? '', 'PROVISIONAL') ? 'PROVISIONAL (MENUNGGU EOD FINAL)' : ($sig->evaluation_status ?? 'PENDING') }}
+                                                </span>
+                                                <span class="text-[9px] text-[#F5F1E8]/40 block text-center">
+                                                    Pantau: {{ $sig->monitoring_status ?? 'ACTIVE' }}
+                                                </span>
+                                            </div>
                                         </td>
                                     </tr>
                                 @endforeach
@@ -241,7 +324,7 @@
                         <p class="text-[11px] text-[#F5F1E8]/50 mt-0.5">Agregasi pergerakan broker di Pasar Reguler (RG). Sumber: IDX Edge PRO.</p>
                     </div>
                     <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-950/60 text-cyan-300 border border-cyan-500/30 self-start sm:self-auto">
-                        BOARD: RG (VERIFIED_ON_SAMPLE)
+                        BOARD: RG (PROVIDER_SUPPLIED)
                     </span>
                 </div>
 
@@ -277,9 +360,9 @@
                                             @endif
                                         </td>
                                         <td class="p-2.5 tabular-nums">{{ number_format($bs->buy_volume, 0, ',', '.') }}</td>
-                                        <td class="p-2.5 tabular-nums">Rp {{ number_format($bs->buy_avg_price ?? 0, 0, ',', '.') }}</td>
+                                        <td class="p-2.5 tabular-nums">{{ $bs->buy_avg_price !== null ? 'Rp '.number_format($bs->buy_avg_price, 0, ',', '.') : 'N/A' }}</td>
                                         <td class="p-2.5 tabular-nums">{{ number_format($bs->sell_volume, 0, ',', '.') }}</td>
-                                        <td class="p-2.5 tabular-nums">Rp {{ number_format($bs->sell_avg_price ?? 0, 0, ',', '.') }}</td>
+                                        <td class="p-2.5 tabular-nums">{{ $bs->sell_avg_price !== null ? 'Rp '.number_format($bs->sell_avg_price, 0, ',', '.') : 'N/A' }}</td>
                                         <td class="p-2.5 tabular-nums {{ $bs->net_volume >= 0 ? 'text-emerald-400' : 'text-rose-400' }}">
                                             {{ $bs->net_volume >= 0 ? '+' : '' }}{{ number_format($bs->net_volume, 0, ',', '.') }}
                                         </td>
@@ -292,7 +375,7 @@
                         </table>
                     </div>
                     <p class="text-[10px] text-[#F5F1E8]/40 italic">
-                        Catatan Metodologis: Agregasi pergerakan broker di Pasar Reguler (RG). Cakupan data dibatasi pada Top-N Broker (misal: 30 broker teratas per sesi); bukan daftar lengkap seluruh anggota bursa. Rata-rata harga beli dihitung murni sebagai buy_value / buy_volume (bukan harga akumulasi bersih). Data ini bukan bukti kepemilikan definitif dari entitas bandar tunggal.
+                        Catatan Metodologis: Agregasi pergerakan broker di Pasar Reguler (RG). Cakupan data dibatasi pada Top-N Broker (misal: 30 broker teratas per sesi); bukan daftar lengkap seluruh anggota bursa. Rata-rata harga beli dihitung murni sebagai buy_value / buy_volume (bukan harga modal akumulasi bersih / cost basis inventori tersisa). Sekuritas bertindak sebagai perantara dari banyak nasabah independen, bukan entitas bandar tunggal.
                     </p>
                 @else
                     <p class="text-xs text-[#F5F1E8]/50 py-4 text-center font-mono">
@@ -338,6 +421,19 @@
                         <div class="bg-[#0D2B4E] p-2.5 rounded">
                             <span class="text-[10px] text-[#F5F1E8]/40 block">ATR (14)</span>
                             <span class="text-sm font-bold text-amber-400 tabular-nums">{{ $technical->atr_14 ? 'Rp ' . number_format($technical->atr_14, 2) : 'N/A' }}</span>
+                        </div>
+                    </div>
+                    @php($technicalFlags = $technical->data_quality_flags ?? [])
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono border-t border-[#F5F1E8]/10 pt-3">
+                        <div class="bg-[#0D2B4E] p-2.5 rounded">
+                            <span class="text-[10px] text-[#F5F1E8]/40 block">SUPPORT / RESISTANCE</span>
+                            <span class="text-sm font-bold text-[#E5C49B] tabular-nums">{{ $technical->support_price !== null && $technical->resistance_price !== null ? 'Rp '.number_format($technical->support_price, 0, ',', '.').' / Rp '.number_format($technical->resistance_price, 0, ',', '.') : 'N/A' }}</span>
+                            <span class="text-[9px] text-[#F5F1E8]/50 block">Rolling {{ data_get($technicalFlags, 'support_resistance_window_bars', 20) }} bar · {{ data_get($technicalFlags, 'support_resistance_method', 'rolling_min_max') }}</span>
+                        </div>
+                        <div class="bg-[#0D2B4E] p-2.5 rounded">
+                            <span class="text-[10px] text-[#F5F1E8]/40 block">BASIS INDIKATOR</span>
+                            <span class="text-sm font-bold text-cyan-400 block">{{ data_get($technicalFlags, 'as_of_date', 'N/A') }}</span>
+                            <span class="text-[9px] text-[#F5F1E8]/50 block">{{ data_get($technicalFlags, 'adjustment_mode', 'PROVIDER_BACK_ADJUSTED') }} · {{ data_get($technicalFlags, 'source', 'IDX Edge PRO') }} · {{ data_get($technicalFlags, 'board_scope', 'RG') }} · {{ data_get($technicalFlags, 'input_bars', $indicatorInputBars) }} bar · interval 1d</span>
                         </div>
                     </div>
                 @else
@@ -394,10 +490,87 @@
     <!-- Tab 4: Fundamental Fiskal -->
     @if(($tab ?? '') === 'fundamental')
         <div class="space-y-6">
+            <div class="bg-[#0A213D] border border-[#F5F1E8]/10 rounded-lg p-5 space-y-4" id="apiFundamentalPanel">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div><h3 class="text-xs font-mono font-bold uppercase tracking-wider text-[#E5C49B]">Laporan Keuangan API</h3><p class="text-[10px] text-[#F5F1E8]/50">Nilai mentah provider. Currency, skala, konsolidasi, dan publikasi tidak ditebak.</p></div>
+                    <div class="flex flex-wrap gap-2 text-[10px] font-mono">
+                        <select id="financialReportType" class="rounded bg-[#05152B] border border-[#F5F1E8]/15 px-2 py-1"><option value="INCOME_STATEMENT">Laba Rugi</option><option value="BALANCE_SHEET">Neraca</option><option value="CASH_FLOW_REPORT">Arus Kas</option></select>
+                        <select id="financialPeriod" class="rounded bg-[#05152B] border border-[#F5F1E8]/15 px-2 py-1"><option value="quarterly">Kuartalan</option><option value="annually">Tahunan</option></select>
+                        <input id="financialYear" type="number" min="2000" max="2100" placeholder="Tahun" class="w-20 rounded bg-[#05152B] border border-[#F5F1E8]/15 px-2 py-1">
+                    </div>
+                </div>
+                <div id="financialApiStatus" class="text-[10px] text-[#F5F1E8]/50" aria-live="polite">Memuat...</div><div id="financialApiTable" class="overflow-auto max-h-[28rem]"></div>
+            </div>
+            <div class="bg-[#0A213D] border border-[#F5F1E8]/10 rounded-lg p-5 space-y-4" id="apiOwnershipPanel">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"><div><h3 class="text-xs font-mono font-bold uppercase tracking-wider text-[#E5C49B]">Kepemilikan Saham ≥1%</h3><p class="text-[10px] text-[#F5F1E8]/50">Snapshot akhir bulan, bukan posisi investor hari ini. Daftar tidak wajib berjumlah 100%.</p></div><div class="flex gap-2 text-[10px] font-mono"><input id="ownershipMonth" type="number" min="1" max="12" placeholder="Bulan" class="w-16 rounded bg-[#05152B] border border-[#F5F1E8]/15 px-2 py-1"><input id="ownershipYear" type="number" min="2000" max="2100" placeholder="Tahun" class="w-20 rounded bg-[#05152B] border border-[#F5F1E8]/15 px-2 py-1"></div></div>
+                <div id="ownershipApiStatus" class="text-[10px] text-[#F5F1E8]/50" aria-live="polite">Ownership endpoint belum diaktifkan.</div><div id="ownershipApiTable" class="overflow-auto max-h-72"></div>
+            </div>
+            <script>
+            (() => {
+                const ticker = @json($ticker), esc = value => String(value ?? 'N/A').replace(/[<>&]/g, ''), display = value => value == null ? 'N/A' : esc(typeof value === 'object' ? JSON.stringify(value) : value), fmt = value => value == null ? 'N/A' : Number(value).toLocaleString('id-ID');
+                let seq = 0;
+                async function financial() { const id = ++seq, type = document.getElementById('financialReportType').value, period = document.getElementById('financialPeriod').value, year = document.getElementById('financialYear').value; const status = document.getElementById('financialApiStatus'), table = document.getElementById('financialApiTable'); status.textContent = 'Memuat laporan...'; try { const q = new URLSearchParams({ report_type: type, period, limit: '40' }); if (year) q.set('year', year); const r = await fetch(`/api/market/${encodeURIComponent(ticker)}/financial-statements?${q}`, { headers: { Accept: 'application/json' }, cache: 'no-store' }); const p = await r.json(); if (id !== seq) return; if (!r.ok || !p.success) throw new Error(p.message || p.error_type || `HTTP ${r.status}`); const items = p.data.items || []; const periods = [...new Set(items.map(x => `${x.year || 'N/A'} ${x.quarter ? 'Q'+x.quarter : ''}`.trim()))]; const keys = [...new Set(items.flatMap(x => Object.keys(x.data || {})))]; table.innerHTML = `<table class="w-full text-[10px] font-mono"><thead class="sticky top-0 bg-[#071C35]"><tr><th class="p-2 text-left">Akun</th>${periods.map(x => `<th class="p-2 text-right">${esc(x)}</th>`).join('')}</tr></thead><tbody>${keys.map(key => `<tr class="border-t border-[#F5F1E8]/5"><td class="p-2">${esc(key)}</td>${periods.map(periodLabel => { const item = items.find(x => `${x.year || 'N/A'} ${x.quarter ? 'Q'+x.quarter : ''}`.trim() === periodLabel); const value = item?.data?.[key]; return `<td class="p-2 text-right tabular-nums">${display(value)}</td>`; }).join('')}</tr>`).join('') || `<tr><td class="p-3" colspan="${periods.length + 1}">PROVIDER_EMPTY</td></tr>`}</tbody></table>`; status.textContent = `Source: IDX Edge API · ${type} · ${period} · ${items.length} periode`; } catch (e) { table.innerHTML = `<p class="p-3 text-amber-300">FETCH_FAILED — ${esc(e.message)}</p>`; status.textContent = 'Provider failure; bukan empty state.'; } }
+                async function ownership() { const status = document.getElementById('ownershipApiStatus'), table = document.getElementById('ownershipApiTable'), q = new URLSearchParams(); const month = document.getElementById('ownershipMonth').value, year = document.getElementById('ownershipYear').value; if (month) q.set('month', month); if (year) q.set('year', year); try { const r = await fetch(`/api/market/${encodeURIComponent(ticker)}/ownership?${q}`, { headers: { Accept: 'application/json' }, cache: 'no-store' }); const p = await r.json(); if (!r.ok || !p.success) throw new Error(p.message || p.error_type || `HTTP ${r.status}`); if (!p.data.found) { status.textContent = 'FOUND_FALSE — periode tidak ditemukan.'; table.innerHTML = ''; return; } const rows = p.data.items || []; table.innerHTML = `<table class="w-full text-[10px] font-mono"><thead class="bg-[#071C35]"><tr><th class="p-2 text-left">Pemegang</th><th class="p-2 text-right">%</th><th class="p-2 text-right">MoM</th><th class="p-2 text-right">Total Shares</th><th class="p-2 text-right">Nilai Rp</th><th class="p-2 text-left">Tipe/Domisili</th></tr></thead><tbody>${rows.map(x => `<tr class="border-t border-[#F5F1E8]/5"><td class="p-2">${esc(x.name || x.shareholder_name)}</td><td class="p-2 text-right">${esc(x.ownership_pct)}</td><td class="p-2 text-right">${esc(x.change_pct_mom)}</td><td class="p-2 text-right">${fmt(x.total_shares)}</td><td class="p-2 text-right">${fmt(x.nilai_rp ?? x.value_rp)}</td><td class="p-2">${esc([x.investor_type, x.local_foreign, x.domicile].filter(Boolean).join(' / '))}</td></tr>`).join('') || '<tr><td colspan="6" class="p-3">PROVIDER_EMPTY</td></tr>'}</tbody></table>`; status.textContent = `Period: ${esc(p.data.period)} · Previous: ${esc(p.data.previous_period)} · MoM semantics: ${esc(p.data.change_pct_mom_semantics)}`; } catch (e) { status.textContent = `OWNERSHIP_NOT_AVAILABLE — ${esc(e.message)}`; table.innerHTML = ''; } }
+                document.querySelectorAll('#financialReportType,#financialPeriod,#financialYear').forEach(x => x.addEventListener('change', financial)); document.querySelectorAll('#ownershipMonth,#ownershipYear').forEach(x => x.addEventListener('change', ownership)); financial(); ownership();
+            })();
+            </script>
+            <div class="hidden">
+            <!-- Legacy calculated summary retained for AI/history compatibility -->
+            <div class="bg-[#0A213D] border border-[#F5F1E8]/10 rounded-lg p-5 space-y-4">
+                <div class="flex items-center justify-between border-b border-[#F5F1E8]/10 pb-3">
+                    <div>
+                        <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-[#E5C49B]">Rekonsiliasi Saham, Laba Induk & Valuasi</h3>
+                        <p class="text-[11px] text-[#F5F1E8]/50 mt-0.5">Pemisahan Reported Basic EPS, Saham Rata-rata Tertimbang Implisit, dan Saham Akhir Periode.</p>
+                    </div>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-950/60 text-cyan-300 border border-cyan-500/30">
+                        STATUS: PROVIDER_SUPPLIED
+                    </span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs font-mono">
+                    <div class="bg-[#0D2B4E] p-3 rounded border border-[#F5F1E8]/5">
+                        <span class="text-[10px] text-[#F5F1E8]/40 block uppercase">Reported Basic EPS</span>
+                        <span class="text-sm font-bold text-[#E5C49B] block mt-1">
+                            {{ $reportedBasicEps !== null ? 'Rp ' . number_format($reportedBasicEps, 2, ',', '.') : 'N/A' }}
+                        </span>
+                        <span class="text-[10px] text-[#F5F1E8]/50 block mt-1">Dasar: Laporan Laba Rugi Resmi</span>
+                    </div>
+
+                    <div class="bg-[#0D2B4E] p-3 rounded border border-[#F5F1E8]/5">
+                        <span class="text-[10px] text-[#F5F1E8]/40 block uppercase">Saham Akhir Periode (Ordinary)</span>
+                        <span class="text-sm font-bold text-[#F5F1E8] block mt-1 tabular-nums">
+                            {{ $periodEndShares ? number_format($periodEndShares, 0, ',', '.') . ' lbr' : 'N/A' }}
+                        </span>
+                        <span class="text-[10px] text-[#F5F1E8]/50 block mt-1">Dasar BVPS & Market Cap</span>
+                    </div>
+
+                    <div class="bg-[#0D2B4E] p-3 rounded border border-[#F5F1E8]/5">
+                        <span class="text-[10px] text-[#F5F1E8]/40 block uppercase">Weighted Shares (Implisit)</span>
+                        <span class="text-sm font-bold text-cyan-300 block mt-1 tabular-nums">
+                            {{ $impliedWeightedShares ? number_format($impliedWeightedShares, 0, ',', '.') . ' lbr' : 'N/A' }}
+                        </span>
+                        <span class="text-[10px] text-[#F5F1E8]/50 block mt-1">Laba Induk / Reported EPS</span>
+                    </div>
+
+                    <div class="bg-[#0D2B4E] p-3 rounded border border-[#F5F1E8]/5">
+                        <span class="text-[10px] text-[#F5F1E8]/40 block uppercase">Penyesuaian Harga (Adj Mode)</span>
+                        <span class="text-sm font-bold text-emerald-400 block mt-1">
+                            {{ $priceAdjustmentMode ?? 'NOMINAL' }}
+                        </span>
+                        <span class="text-[10px] text-[#F5F1E8]/50 block mt-1">Basis Harga Sesi Terkini</span>
+                    </div>
+                </div>
+
+                <div class="bg-[#071C35] p-3 rounded border border-[#F5F1E8]/5 text-[11px] text-[#F5F1E8]/70 leading-relaxed">
+                    <strong class="text-[#E5C49B]">Catatan Audit:</strong> Rasio laba bersih entitas induk terhadap jumlah saham akhir periode menghasilkan kalkulasi naif (misal pada FORE: Rp 90,13 M / 8,918 M lbr = Rp 10,11). Angka reported EPS sebesar Rp 10,95 mencerminkan rata-rata tertimbang saham beredar sepanjang tahun buku (~8,231 M lbr) akibat aksi korporasi / pencatatan saham di tengah periode. Sistem memisahkan basis ini secara transparan tanpa mengubah reported EPS resmi.
+                </div>
+            </div>
+
+            <!-- Tabel Laporan Keuangan Fiskal Tahunan -->
             <div class="bg-[#0A213D] border border-[#F5F1E8]/10 rounded-lg p-5 space-y-4">
                 <div class="flex items-center justify-between border-b border-[#F5F1E8]/10 pb-3">
                     <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-[#E5C49B]">Laporan Keuangan Fiskal Tahunan</h3>
-                    <span class="text-xs font-mono text-[#F5F1E8]/40">Mata Uang: IDR (Miliar Rupiah)</span>
+                    <span class="text-xs font-mono text-[#F5F1E8]/40">Nominal hanya dibandingkan jika currency, scale, dan consolidation terverifikasi.</span>
                 </div>
 
                 @if($fundamentals->isNotEmpty())
@@ -411,6 +584,8 @@
                                     <th class="p-2.5">Atribusi Entitas Induk</th>
                                     <th class="p-2.5">Total Aset</th>
                                     <th class="p-2.5">Total Ekuitas</th>
+                                    <th class="p-2.5">Arus Kas Operasi</th>
+                                    <th class="p-2.5">Free Cash Flow</th>
                                     <th class="p-2.5">Sumber & Kualitas</th>
                                 </tr>
                             </thead>
@@ -418,29 +593,18 @@
                                 @foreach($fundamentals as $f)
                                     <tr class="hover:bg-[#0D2B4E]/60 transition">
                                         <td class="p-2.5 font-bold text-[#E5C49B]">{{ $f->fiscal_year }}</td>
-                                        <td class="p-2.5 tabular-nums">Rp {{ number_format($f->total_revenue / 1e9, 2, ',', '.') }} M</td>
-                                        <td class="p-2.5 tabular-nums {{ $f->net_income >= 0 ? 'text-emerald-400' : 'text-rose-400' }}">Rp {{ number_format($f->net_income / 1e9, 2, ',', '.') }} M</td>
-                                        <td class="p-2.5 tabular-nums text-emerald-300">
-                                            {{ $f->attribution_parent ? 'Rp ' . number_format($f->attribution_parent / 1e9, 2, ',', '.') . ' M' : '-' }}
-                                        </td>
-                                        <td class="p-2.5 tabular-nums">Rp {{ number_format($f->total_assets / 1e9, 2, ',', '.') }} M</td>
-                                        <td class="p-2.5 tabular-nums text-cyan-400">Rp {{ number_format($f->total_equity / 1e9, 2, ',', '.') }} M</td>
-                                        <td class="p-2.5">
-                                            @if($f->data_quality === 'DOCUMENT_VERIFIED_ON_SAMPLE')
-                                                <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-950/80 text-emerald-300 border border-emerald-500/40">
-                                                    DOCUMENT_VERIFIED
-                                                </span>
-                                            @elseif($f->data_quality === 'PROVIDER_SUPPLIED')
-                                                <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-cyan-950/80 text-cyan-300 border border-cyan-500/40">
-                                                    PROVIDER_SUPPLIED
-                                                </span>
-                                            @else
-                                                <span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-amber-950/60 text-amber-300 border border-amber-500/30">
-                                                    {{ $f->data_quality ?? 'VERIFIED_ON_SAMPLE' }}
-                                                </span>
-                                            @endif
-                                            <span class="text-[9px] text-[#F5F1E8]/40 block mt-0.5">{{ $f->source ?? 'IDX Edge PRO' }}</span>
-                                        </td>
+                                        @if(in_array(strtoupper((string) $f->currency), ['IDR', 'USD'], true) && in_array(strtoupper((string) $f->unit), ['IDR_FULL', 'USD_FULL'], true) && data_get($f->raw_payload, 'consolidation_scope') !== null)
+                                            <td class="p-2.5 tabular-nums">{{ $f->currency }} {{ number_format($f->total_revenue, 2, ',', '.') }}</td>
+                                            <td class="p-2.5 tabular-nums {{ $f->net_income >= 0 ? 'text-emerald-400' : 'text-rose-400' }}">{{ $f->currency }} {{ number_format($f->net_income, 2, ',', '.') }}</td>
+                                            <td class="p-2.5 tabular-nums text-emerald-300">{{ $f->attribution_parent !== null ? $f->currency.' '.number_format($f->attribution_parent, 2, ',', '.') : '-' }}</td>
+                                            <td class="p-2.5 tabular-nums">{{ $f->currency }} {{ number_format($f->total_assets, 2, ',', '.') }}</td>
+                                            <td class="p-2.5 tabular-nums text-cyan-400">{{ $f->currency }} {{ number_format($f->total_equity, 2, ',', '.') }}</td>
+                                            <td class="p-2.5 tabular-nums">{{ $f->operating_cash_flow !== null ? $f->currency.' '.number_format($f->operating_cash_flow, 2, ',', '.') : 'N/A' }}</td>
+                                            <td class="p-2.5 tabular-nums {{ $f->free_cash_flow !== null && $f->free_cash_flow >= 0 ? 'text-emerald-400' : 'text-rose-400' }}">{{ $f->free_cash_flow !== null ? $f->currency.' '.number_format($f->free_cash_flow, 2, ',', '.') : 'N/A' }}</td>
+                                        @else
+                                            <td class="p-2.5 text-amber-300" colspan="7">NOMINAL_INTERPRETATION_BLOCKED — currency/scale/consolidation belum terverifikasi.</td>
+                                        @endif
+                                        <td class="p-2.5"><span class="text-[10px] font-mono text-amber-300">{{ $f->data_quality ?? 'NOT_VERIFIED' }}</span><span class="text-[9px] text-[#F5F1E8]/40 block mt-0.5">{{ $f->source ?? 'IDX Edge PRO' }}</span></td>
                                     </tr>
                                 @endforeach
                             </tbody>
@@ -452,10 +616,11 @@
                     </p>
                 @endif
             </div>
+            </div>
         </div>
     @endif
 
-    <!-- Tab 5: Kesimpulan AI Gemini -->
+    <!-- Tab 5: Kesimpulan AI -->
     @if(($tab ?? '') === 'ai_insight')
         <div class="space-y-6">
 
@@ -762,6 +927,15 @@
                                 <span class="text-[#F5F1E8]/40 block uppercase">Evidence Snapshot ID:</span>
                                 <span class="text-[#F5F1E8] font-bold">{{ $aiConclusion['section_f']['evidence_id'] ? '#'.$aiConclusion['section_f']['evidence_id'] : '-' }}</span>
                             </div>
+                            @if(!empty($aiConclusion['section_f']['historical_warning']))
+                                <div class="sm:col-span-2 rounded border border-amber-500/30 bg-amber-950/20 p-3 text-amber-200">
+                                    {{ $aiConclusion['section_f']['historical_warning'] }}
+                                </div>
+                            @endif
+                            <div>
+                                <span class="text-[#F5F1E8]/40 block uppercase">Evidence Link Status:</span>
+                                <span class="text-[#F5F1E8] font-bold">{{ $aiConclusion['section_f']['evidence_link_status'] ?? 'UNKNOWN' }}</span>
+                            </div>
                             <div>
                                 <span class="text-[#F5F1E8]/40 block uppercase">Evidence Hash (SHA-256):</span>
                                 <span class="text-[#E5C49B] break-all select-all">{{ $aiConclusion['section_f']['evidence_hash'] ?? '-' }}</span>
@@ -833,7 +1007,12 @@
         </div>
     @endif
 
-    <!-- Tab 7: Riwayat AI Historis -->
+    <!-- Tab 7: Insider data -->
+    @if(($tab ?? '') === 'insiders')
+        @include('dashboard.ticker_insiders')
+    @endif
+
+    <!-- Tab 8: Riwayat AI Historis -->
     @if(($tab ?? '') === 'history')
         <div class="space-y-6">
             <div class="bg-[#0A213D] border border-[#F5F1E8]/10 rounded-lg p-5 space-y-4">
@@ -922,6 +1101,6 @@
         </div>
     @endif
 
-    @if(($tab ?? 'summary') === 'summary' && $recentBars->isNotEmpty())
+    @if(($tab ?? 'summary') === 'summary')
         @include('dashboard.ticker_chart_script')
     @endif

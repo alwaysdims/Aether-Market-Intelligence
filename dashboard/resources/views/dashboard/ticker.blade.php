@@ -88,10 +88,10 @@
                     </button>
 
                     @if($aiConclusion['header']['can_request_research'])
-                        <button onclick="openResearchModal('{{ $ticker }}')" class="px-3 py-2 bg-[#E5C49B] hover:bg-[#D6B284] text-[#05152B] rounded text-xs font-semibold tracking-wide transition flex items-center shadow-sm">
+                        <a href="{{ route('dashboard.research', ['ticker' => $ticker]) }}" class="px-3 py-2 bg-[#E5C49B] hover:bg-[#D6B284] text-[#05152B] rounded text-xs font-semibold tracking-wide transition flex items-center shadow-sm">
                             <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                             Riset AI
-                        </button>
+                        </a>
                     @else
                         <button disabled title="Instrumen belum terdaftar di registri BEI. Riset dinonaktifkan sebelum validasi sah." class="px-3 py-2 bg-[#05152B] border border-[#F5F1E8]/10 text-[#F5F1E8]/40 rounded text-xs font-mono cursor-not-allowed flex items-center">
                             <svg class="w-3.5 h-3.5 mr-1.5 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m0 0v2m0-2h2m-2 0H10m11-3.5a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -128,7 +128,7 @@
 
             <!-- Tab 5: Kesimpulan AI -->
             <a href="{{ route('dashboard.ticker', ['ticker' => $ticker, 'tab' => 'ai_insight']) }}" data-tab="ai_insight" class="tab-link px-3.5 py-2 text-xs font-medium rounded-t transition border-b-2 {{ ($tab ?? '') === 'ai_insight' ? 'active-tab bg-[#0A213D] text-[#E5C49B] border-[#E5C49B] font-semibold' : 'text-[#F5F1E8]/60 hover:text-[#F5F1E8] border-transparent hover:bg-[#0A213D]/40' }}">
-                5. Kesimpulan AI Gemini
+                5. Kesimpulan AI
             </a>
 
             <!-- Tab 6: News & Event -->
@@ -136,9 +136,14 @@
                 6. News & Event ({{ $news->count() }})
             </a>
 
-            <!-- Tab 7: Riwayat AI -->
+            <!-- Tab 7: Insider -->
+            <a href="{{ route('dashboard.ticker', ['ticker' => $ticker, 'tab' => 'insiders']) }}" data-tab="insiders" class="tab-link px-3.5 py-2 text-xs font-medium rounded-t transition border-b-2 {{ ($tab ?? '') === 'insiders' ? 'active-tab bg-[#0A213D] text-[#E5C49B] border-[#E5C49B] font-semibold' : 'text-[#F5F1E8]/60 hover:text-[#F5F1E8] border-transparent hover:bg-[#0A213D]/40' }}">
+                7. Insider
+            </a>
+
+            <!-- Tab 8: Riwayat AI -->
             <a href="{{ route('dashboard.ticker', ['ticker' => $ticker, 'tab' => 'history']) }}" data-tab="history" class="tab-link px-3.5 py-2 text-xs font-medium rounded-t transition border-b-2 {{ ($tab ?? '') === 'history' ? 'active-tab bg-[#0A213D] text-[#E5C49B] border-[#E5C49B] font-semibold' : 'text-[#F5F1E8]/60 hover:text-[#F5F1E8] border-transparent hover:bg-[#0A213D]/40' }}">
-                7. Riwayat AI Historis
+                8. Riwayat AI Historis
             </a>
         </nav>
     </div>

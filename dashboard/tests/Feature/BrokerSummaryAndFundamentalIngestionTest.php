@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\BrokerSummary;
+use App\Models\CompanyAnalysisMetric;
 use App\Models\CompanyFundamental;
 use App\Models\DataRevisionArchive;
 use App\Models\DataSource;
+use App\Models\MarketObservation;
 use App\Services\AiToolExecutorService;
 use App\Services\BrokerSummaryIngestionService;
 use App\Services\DataSourceRegistryService;
@@ -28,7 +30,7 @@ class BrokerSummaryAndFundamentalIngestionTest extends TestCase
             'base_url' => 'https://stock.arjum.com',
             'api_key' => 'test-api-key',
             'timeout' => 10,
-            'daily_budget' => 800,
+            'daily_budget' => 6000,
             'reserve' => 200,
             'requests_per_minute' => 10,
             'cache_ttl_seconds' => 30,
@@ -155,6 +157,20 @@ class BrokerSummaryAndFundamentalIngestionTest extends TestCase
                     ],
                 ],
             ], 200, ['X-Quota-Cost' => '1']),
+            'https://stock.arjum.com/api/financial-statements/BBCA?report_type=CASH_FLOW_REPORT*' => Http::response([
+                'stock_code' => 'BBCA',
+                'report_type' => 'CASH_FLOW_REPORT',
+                'items' => [
+                    [
+                        'year' => '2025',
+                        'quarter' => 'FY',
+                        'data' => [
+                            'arus_kas_dari_aktivitas_operasi' => 40000000000000,
+                            'perolehan_aset_tetap' => -10000000000000,
+                        ],
+                    ],
+                ],
+            ], 200, ['X-Quota-Cost' => '1']),
         ]);
 
         $service = app(IdxEdgeFundamentalIngestionService::class);
@@ -171,10 +187,13 @@ class BrokerSummaryAndFundamentalIngestionTest extends TestCase
         $this->assertSame(467.0, (float) $f->eps_basic);
         $this->assertSame(1660579336000000.0, (float) $f->total_assets);
         $this->assertSame(281687555000000.0, (float) $f->total_equity);
+        $this->assertSame(40000000000000.0, (float) $f->operating_cash_flow);
+        $this->assertSame(-10000000000000.0, (float) $f->capital_expenditure);
+        $this->assertSame(30000000000000.0, (float) $f->free_cash_flow);
         $this->assertSame('IDX Edge PRO', $f->source);
         // Test MEDC Foreign Currency handling
         Http::fake([
-            'https://stock.arjum.com/api/financial-statements/MEDC?report_type=INCOME_STATEMENT*' => Http::response([
+            'https://stock.arjum.com/api/financial-statements/MEDC?report_type=INCOME_STATEMENT&period=annually&limit=1' => Http::response([
                 'stock_code' => 'MEDC',
                 'report_type' => 'INCOME_STATEMENT',
                 'items' => [
@@ -188,14 +207,15 @@ class BrokerSummaryAndFundamentalIngestionTest extends TestCase
                     ],
                 ],
             ], 200, ['X-Quota-Cost' => '1']),
-            'https://stock.arjum.com/api/financial-statements/MEDC?report_type=BALANCE_SHEET*' => Http::response([
+            'https://stock.arjum.com/api/financial-statements/MEDC?report_type=BALANCE_SHEET&period=annually&limit=1' => Http::response([
                 'stock_code' => 'MEDC',
                 'report_type' => 'BALANCE_SHEET',
                 'items' => [],
             ], 200, ['X-Quota-Cost' => '1']),
         ]);
 
-        $service->syncAnnualStatements('MEDC', 1);
+        $medcResult = $service->syncAnnualStatements('MEDC', 1);
+        $this->assertTrue($medcResult['success'], json_encode($medcResult));
         $medc = CompanyFundamental::where('ticker', 'MEDC')->firstOrFail();
         $this->assertSame('USD', $medc->raw_payload['conversion_metadata']['original_currency']);
         $this->assertSame('UNKNOWN_PROVIDER_CONVERSION', $medc->raw_payload['conversion_metadata']['conversion_method']);
@@ -258,6 +278,58 @@ class BrokerSummaryAndFundamentalIngestionTest extends TestCase
         $this->assertStringContainsString('LAPORAN KEUANGAN FUNDAMENTAL', $fundOutput);
         $this->assertStringContainsString('2025', $fundOutput);
         $this->assertStringContainsString('DOCUMENT_VERIFIED_ON_SAMPLE', $fundOutput);
+    }
+
+    public function test_grounded_instrument_analysis_keeps_broker_snapshot_and_ml_state_separate(): void
+    {
+        MarketObservation::create([
+            'ticker' => 'BBCA',
+            'observation_time' => '2026-11-13 09:00:00',
+            'bar_date' => '2026-11-13',
+            'open_price' => 5475,
+            'high_price' => 5650,
+            'low_price' => 5425,
+            'close_price' => 5500,
+            'volume' => 218808600,
+            'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'validation_status' => 'VALID',
+            'fetched_at' => '2026-11-15 08:57:39',
+            'available_at' => '2026-11-15 08:57:39',
+        ]);
+        BrokerSummary::create([
+            'ticker' => 'BBCA',
+            'summary_date' => '2026-11-13',
+            'broker_code' => 'KZ',
+            'broker_name' => 'CLSA',
+            'board' => 'RG',
+            'net_value' => 185193665000,
+            'net_volume' => 33487300,
+            'flow_type' => 'all',
+            'unit' => 'SHARES',
+            'source' => 'IDX Edge PRO',
+            'fetched_at' => '2026-11-15 13:30:29',
+        ]);
+        CompanyAnalysisMetric::create([
+            'ticker' => 'BBCA',
+            'as_of_date' => '2026-11-06',
+            'rsi_14' => 44.95,
+            'sma_20' => 5244,
+            'support_price' => 4740,
+            'resistance_price' => 6125,
+        ]);
+
+        $uid = (string) config('services.telegram.chat_id', '123456');
+        $provenance = [];
+        $output = app(AiToolExecutorService::class)->executeTool('get_instrument_analysis', ['ticker' => 'BBCA'], $uid, $uid, $provenance);
+
+        $this->assertStringContainsString('Broker RG: periode sesi 2026-11-13; Top-N=1', $output);
+        $this->assertStringContainsString('KZ +Rp 185,19 M', $output);
+        $this->assertStringContainsString('Model ML: TIDAK AKTIF', $output);
+        $this->assertStringContainsString('NO_ACTIVE_INFERENCE_FOR_BAR, bukan NO_SIGNAL_ABSTAIN', $output);
+        $this->assertStringContainsString('metrik terakhir tersedia sampai 2026-11-06', $output);
+        $this->assertStringContainsString('RSI 44.95', $output);
     }
 
     public function test_revisions_are_archived_when_broker_data_changes(): void

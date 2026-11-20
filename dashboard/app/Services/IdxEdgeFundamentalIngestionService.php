@@ -53,6 +53,17 @@ class IdxEdgeFundamentalIngestionService
         $balRes = $this->client->financialStatements($ticker, 'BALANCE_SHEET', 'annually', $limit);
         $balItems = $balRes['success'] ? ($balRes['data']['items'] ?? []) : [];
         $balByYear = [];
+
+        // 3. Fetch Cash Flow. Empty response stays null; never infer cash flow from profit.
+        $cashRes = $this->client->financialStatements($ticker, 'CASH_FLOW_REPORT', 'annually', $limit);
+        $cashItems = $cashRes['success'] ? ($cashRes['data']['items'] ?? []) : [];
+        $cashByYear = [];
+        foreach ($cashItems as $cashItem) {
+            $yr = (int) ($cashItem['year'] ?? 0);
+            if ($yr > 0) {
+                $cashByYear[$yr] = $cashItem['data'] ?? [];
+            }
+        }
         foreach ($balItems as $bItem) {
             $yr = (int) ($bItem['year'] ?? 0);
             if ($yr > 0) {
@@ -71,8 +82,34 @@ class IdxEdgeFundamentalIngestionService
 
             $incData = $incItem['data'] ?? [];
             $balData = $balByYear[$year] ?? [];
+            $cashData = $cashByYear[$year] ?? [];
+
+            $cashValue = null;
+            $cashValue = static function (array $data, array $keys) use (&$cashValue): ?float {
+                foreach ($keys as $key) {
+                    if (array_key_exists($key, $data) && is_numeric($data[$key])) {
+                        return (float) $data[$key];
+                    }
+                }
+                foreach ($data as $value) {
+                    if (is_array($value)) {
+                        $found = $cashValue($value, $keys);
+                        if ($found !== null) {
+                            return $found;
+                        }
+                    }
+                }
+
+                return null;
+            };
+            $operatingCashFlow = $cashValue($cashData, ['arus_kas_dari_aktivitas_operasi', 'kas_netto_dari_aktivitas_operasi', 'net_cash_from_operating_activities']);
+            $capitalExpenditure = $cashValue($cashData, ['perolehan_aset_tetap', 'pembelian_aset_tetap', 'capital_expenditure']);
+            $freeCashFlow = $operatingCashFlow !== null && $capitalExpenditure !== null
+                ? $operatingCashFlow - abs($capitalExpenditure)
+                : null;
 
             // Detect industry mapping: Bank vs Non-Bank
+
             $isBank = isset($incData['pendapatan_dan_beban_operasional']);
             if ($isBank) {
                 $rev = (float) ($incData['pendapatan_dan_beban_operasional']['pendapatan_bunga'] ?? 0);
@@ -115,23 +152,41 @@ class IdxEdgeFundamentalIngestionService
             // Do NOT promote to DOCUMENT_VERIFIED without an actual verified primary PDF filing artifact.
             $quality = 'PROVIDER_SUPPLIED';
 
-            $dataHash = hash('sha256', "{$ticker}|ANNUAL|{$year}|{$rev}|{$netIncome}|{$totAssets}|{$totEquity}|IDX Edge PRO");
+            $dataHash = hash('sha256', json_encode([
+                $ticker,
+                'ANNUAL',
+                $year,
+                $rev,
+                $netIncome,
+                $totAssets,
+                $totEquity,
+                $operatingCashFlow,
+                $capitalExpenditure,
+                $freeCashFlow,
+                'IDX Edge PRO',
+            ], JSON_THROW_ON_ERROR));
 
             $knownUsdTickers = ['MEDC', 'ITMG', 'INDY', 'PTRO', 'MBMA', 'AMMN'];
             $isUsdReporter = in_array($ticker, $knownUsdTickers, true)
                 || (isset($incItem['data']['currency']) && strtoupper($incItem['data']['currency']) === 'USD');
 
-            $conversionMeta = [];
-            if ($isUsdReporter) {
-                $conversionMeta = [
-                    'original_currency' => 'USD',
-                    'reported_currency' => 'IDR',
-                    'exchange_rate' => null,
-                    'rate_date' => null,
-                    'conversion_method' => 'UNKNOWN_PROVIDER_CONVERSION',
-                    'usage_limitation' => 'Valuasi dan rasio laba tidak boleh menjadi basis valuasi utama atau dibandingkan langsung dengan emiten pelaporan IDR murni tanpa normalisasi kurs resmi.',
-                ];
+            $explicitCurrency = $incData['currency'] ?? $balData['currency'] ?? null;
+            $reportedCurrency = strtoupper((string) ($explicitCurrency ?? ($isUsdReporter ? 'USD' : 'IDR')));
+            if (! in_array($reportedCurrency, ['IDR', 'USD'], true)) {
+                $reportedCurrency = 'UNKNOWN';
             }
+            $reportedUnit = (string) ($incData['unit'] ?? $balData['unit'] ?? ($reportedCurrency === 'UNKNOWN' ? 'UNKNOWN' : $reportedCurrency.'_FULL'));
+            $providerConversionUnknown = $isUsdReporter && $explicitCurrency === null;
+            $conversionMeta = [
+                'original_currency' => $reportedCurrency,
+                'reported_currency' => $reportedCurrency,
+                'exchange_rate' => null,
+                'rate_date' => null,
+                'conversion_method' => ($reportedCurrency === 'UNKNOWN' || $providerConversionUnknown) ? 'UNKNOWN_PROVIDER_CONVERSION' : 'NONE',
+                'usage_limitation' => ($reportedCurrency === 'UNKNOWN' || $providerConversionUnknown)
+                    ? 'Penyedia tidak memberi kurs resmi atau mata uang eksplisit; rasio lintas mata uang ditahan.'
+                    : 'Tidak ada konversi mata uang; angka dipertahankan dalam mata uang sumber.',
+            ];
 
             $existing = CompanyFundamental::where([
                 'ticker' => $ticker,
@@ -186,8 +241,8 @@ class IdxEdgeFundamentalIngestionService
                 ],
                 [
                     'period_end_date' => "{$year}-12-31",
-                    'currency' => 'IDR',
-                    'unit' => 'IDR',
+                    'currency' => $reportedCurrency,
+                    'unit' => $reportedUnit,
                     'is_audited' => true,
                     'is_restated' => false,
                     'total_revenue' => $rev,
@@ -202,6 +257,9 @@ class IdxEdgeFundamentalIngestionService
                     'total_assets' => $totAssets,
                     'total_liabilities' => $totLiab,
                     'total_equity' => $totEquity,
+                    'operating_cash_flow' => $operatingCashFlow,
+                    'capital_expenditure' => $capitalExpenditure,
+                    'free_cash_flow' => $freeCashFlow,
                     'source' => 'IDX Edge PRO',
                     'data_quality' => $quality,
                     'raw_data_hash' => $dataHash,

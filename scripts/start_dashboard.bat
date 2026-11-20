@@ -1,34 +1,37 @@
 @echo off
-REM Aether Market Intelligence - Web Dashboard Launcher
-REM Only starts the Laravel HTTP Web Server on port 8000.
-REM No AI inference, no database writes, no scheduler modification.
-
+setlocal
 set SCRIPT_DIR=%~dp0
 for %%I in ("%SCRIPT_DIR%..") do set ROOT_DIR=%%~fI
-set DASHBOARD_DIR=%ROOT_DIR%\dashboard
 set PHP_BIN=C:\laragon\bin\php\php-8.3.7-Win32-vs16-x64\php.exe
-
-if not exist "%DASHBOARD_DIR%" (
-    echo [ERROR] Direktori dashboard tidak ditemukan: %DASHBOARD_DIR%
-    pause
-    exit /b 1
-)
+set LAUNCHER=%SCRIPT_DIR%launch_readonly_dashboard.php
+set LAUNCH_EXIT=0
 
 if not exist "%PHP_BIN%" (
     echo [ERROR] PHP binary tidak ditemukan: %PHP_BIN%
-    pause
-    exit /b 1
+    set LAUNCH_EXIT=1
+    goto finish
+)
+
+if not exist "%LAUNCHER%" (
+    echo [ERROR] Launcher dashboard tidak ditemukan: %LAUNCHER%
+    set LAUNCH_EXIT=2
+    goto finish
 )
 
 echo =========================================================================
-echo  AETHER MARKET INTELLIGENCE - DASHBOARD WEB CONTROL PLANE
+echo  AETHER MARKET INTELLIGENCE - MODE PEMULIHAN HANYA-BACA
+echo  URL: http://127.0.0.1:8000
 echo =========================================================================
-echo  Root Folder: %ROOT_DIR%
-echo  Dashboard  : %DASHBOARD_DIR%
-echo  URL Akses  : http://localhost:8000
-echo =========================================================================
-echo  Tekan Ctrl+C untuk menghentikan web server.
-echo =========================================================================
+if "%~1"=="" (
+    "%PHP_BIN%" "%LAUNCHER%" --serve
+) else (
+    "%PHP_BIN%" "%LAUNCHER%" %*
+)
+set LAUNCH_EXIT=%errorlevel%
 
-cd /d "%DASHBOARD_DIR%"
-"%PHP_BIN%" artisan serve --host=127.0.0.1 --port=8000
+:finish
+if not "%LAUNCH_EXIT%"=="0" (
+    echo [ERROR] Dashboard berhenti dengan exit code %LAUNCH_EXIT%.
+    echo Salin pesan JSON stage/reason/sqlstate di atas. Jangan kirim credential.
+)
+exit /b %LAUNCH_EXIT%

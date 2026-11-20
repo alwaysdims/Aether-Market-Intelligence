@@ -98,7 +98,7 @@
                     <tr>
                         <th class="px-4 py-3">Emiten & Papan</th>
                         <th class="px-4 py-3">Sektor / Industri</th>
-                        <th class="px-4 py-3 text-right">Harga Terkini</th>
+                        <th class="px-4 py-3 text-right">Penutupan EOD (Nominal)</th>
                         <th class="px-4 py-3 text-right">Perubahan Sesi</th>
                         <th class="px-4 py-3">Sesi & Sumber</th>
                         <th class="px-4 py-3 text-center">Status Data</th>
@@ -139,12 +139,20 @@
                             <!-- Harga Terkini (Right aligned tabular) -->
                             <td class="px-4 py-3 font-mono tabular-nums text-sm font-semibold text-right">
                                 @php
-                                    $obsState = ($obs && isset($marketRead)) ? $marketRead->state($obs) : 'VALID';
-                                    $obsQuarantined = in_array($obsState, ['PROVISIONAL', 'CONFLICTED', 'MISSING']);
+                                    $obsState = ($obs && isset($marketRead)) ? $marketRead->state($obs) : ($obs ? 'VALID' : 'MISSING');
+                                    $isConflicted = ($obsState === 'CONFLICTED');
+                                    $isProvisional = ($obsState === 'PROVISIONAL');
                                 @endphp
-                                @if($obs && !$obsQuarantined && $closePrice !== null)
+                                @if($obs && !$isConflicted && $closePrice !== null)
                                     <div class="text-right">Rp {{ number_format($closePrice, 0, ',', '.') }}</div>
-                                    <span class="text-[9px] text-[#F5F1E8]/40 font-mono block text-right">ID: #{{ $obs->id }}</span>
+                                    <div class="flex items-center justify-end space-x-1 mt-0.5">
+                                        @if($isProvisional)
+                                            <span class="text-[8px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1 rounded font-mono">PROVISIONAL</span>
+                                        @endif
+                                        <span class="text-[9px] text-[#F5F1E8]/40 font-mono">ID: #{{ $obs->id }}</span>
+                                    </div>
+                                @elseif($isConflicted)
+                                    <span class="text-rose-400 font-normal text-xs text-right block font-mono">CONFLICTED</span>
                                 @else
                                     <span class="text-[#F5F1E8]/30 font-normal text-xs text-right block">DATA_NOT_AVAILABLE</span>
                                 @endif
@@ -168,8 +176,8 @@
                             <!-- Sesi & Sumber -->
                             <td class="px-4 py-3 text-xs">
                                 @if($obs)
-                                    <span class="block font-mono text-[#F5F1E8]">{{ $obs->bar_date->format('Y-m-d') }}</span>
-                                    <span class="block text-[10px] text-[#E5C49B] font-mono">{{ $source ?? 'IDX Edge PRO' }}</span>
+                                    <span class="block font-mono text-[#F5F1E8]">EOD {{ $obs->bar_date->format('Y-m-d') }}</span>
+                                    <span class="block text-[10px] text-[#E5C49B] font-mono">{{ $source ?? 'IDX Edge PRO' }} ({{ $obs->adjustment_mode ?? 'UNADJUSTED' }})</span>
                                 @else
                                     <span class="text-[#F5F1E8]/40 font-mono text-[11px]">Registri Sekunder</span>
                                     <span class="block text-[10px] text-[#F5F1E8]/30">Belum tersinkron</span>
@@ -178,8 +186,14 @@
 
                             <!-- Status Data / Freshness -->
                             <td class="px-4 py-3 text-center">
-                                @if($obs)
-                                    <x-badge variant="success">TERVERIFIKASI</x-badge>
+                                @if($obs && $closePrice !== null)
+                                    @if($isProvisional)
+                                        <x-badge variant="warning">PROVISIONAL</x-badge>
+                                    @else
+                                        <x-badge variant="success">TERVERIFIKASI</x-badge>
+                                    @endif
+                                @elseif($obs && $closePrice === null)
+                                    <x-badge variant="neutral">BAR KOSONG</x-badge>
                                 @else
                                     <x-badge variant="neutral">REGISTRI ONLY</x-badge>
                                 @endif

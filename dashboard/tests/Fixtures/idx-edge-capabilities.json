@@ -1,0 +1,104 @@
+{
+  "insiders": {
+    "stock_code": "BBCA",
+    "count": 2,
+    "total": 85,
+    "page": 1,
+    "page_size": 2,
+    "total_pages": 43,
+    "items": [
+      {
+        "name": "TONNY KUSNADI",
+        "date": "2026-03-25",
+        "action_type": "buy",
+        "nationality": "local",
+        "previous_value": "7,502,058",
+        "previous_percentage": "0.0061",
+        "current_value": "7,819,950",
+        "current_percentage": "0.0063",
+        "changes_value": "+317,892",
+        "changes_percentage": "+0.0002",
+        "price_formatted": "6,982",
+        "broker_code": "",
+        "badges": ["KOMISARIS"]
+      },
+      {
+        "name": "FRENGKY CHANDRA KUSUMA",
+        "date": "2026-03-25",
+        "action_type": "buy",
+        "nationality": "local",
+        "previous_value": "2,429,926",
+        "previous_percentage": "0.0020",
+        "current_value": "2,835,916",
+        "current_percentage": "0.0023",
+        "changes_value": "+405,990",
+        "changes_percentage": "+0.0003",
+        "price_formatted": "6,982",
+        "broker_code": "",
+        "badges": ["DIREKTUR"]
+      }
+    ]
+  },
+  "screener": {
+    "date": "📊 **SCREENER V5.2** — Senin, 16 November 2026",
+    "source": "screener_v5.py",
+    "rows": [
+      {
+        "stock_code": "AADI",
+        "stock_name": "Adaro Andalan Indonesia Tbk.",
+        "bucket": "⚔️ KONFLIK DISTRIBUSI",
+        "summary": "pattern",
+        "wr_event": 65.1,
+        "potential": 6,
+        "drawdown": -2,
+        "note": "asing jual kuat"
+      },
+      {
+        "stock_code": "ASGR",
+        "stock_name": "Astra Graphia Tbk.",
+        "bucket": "🥷 AKUMULASI SENYAP",
+        "summary": "🥷",
+        "wr_event": null,
+        "potential": null,
+        "drawdown": null,
+        "note": "mode senyap"
+      }
+    ],
+    "raw": "📊 SCREENER V5.2 — Senin, 16 November 2026",
+    "cached_for_seconds": 86368
+  },
+  "movers": {
+    "by": "chg",
+    "gainers": [
+      {
+        "code": "AREA",
+        "last_price": 268,
+        "change": 69,
+        "change_pct": 34.67,
+        "freq": 2929,
+        "lot": 114645,
+        "value": 2968771800,
+        "vwap": 258.95
+      }
+    ],
+    "losers": [
+      {
+        "code": "SMMA",
+        "last_price": 17500,
+        "change": -3875,
+        "change_pct": -18.13,
+        "freq": 149,
+        "lot": 134282.48,
+        "value": 148185736980,
+        "vwap": 11035.37
+      }
+    ],
+    "count": 839,
+    "market": {
+      "status": "open",
+      "label": "Sesi 1 berlangsung (09:00-12:00 WIB)",
+      "session": 1,
+      "session_end": "12:00"
+    }
+  }
+}

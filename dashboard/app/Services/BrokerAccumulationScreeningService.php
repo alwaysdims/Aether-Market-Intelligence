@@ -69,6 +69,7 @@ class BrokerAccumulationScreeningService
                 ->count('ticker');
 
             $activeObservationsCount = MarketObservation::where('source', 'IDX Edge PRO')
+                ->where('board_scope', 'RG')
                 ->whereBetween('bar_date', [$actualDataStart, $actualDataEnd])
                 ->whereNotIn('ticker', ['^JKSE', 'IHSG', 'JKSE'])
                 ->distinct('ticker')
@@ -76,6 +77,7 @@ class BrokerAccumulationScreeningService
 
             $freshAndEligibleCount = DB::table('market_observations')
                 ->where('source', 'IDX Edge PRO')
+                ->where('board_scope', 'RG')
                 ->where('bar_date', $actualDataEnd)
                 ->whereNotIn('ticker', ['^JKSE', 'IHSG', 'JKSE'])
                 ->where('volume', '>', 0)
@@ -280,6 +282,7 @@ class BrokerAccumulationScreeningService
                     FROM market_observations
                     WHERE bar_date BETWEEN ? AND ? 
                       AND source = 'IDX Edge PRO'
+                      AND board_scope = 'RG'
                       AND ticker NOT IN ('^JKSE', 'IHSG', 'JKSE')
                     GROUP BY ticker
                     HAVING AVG(volume) >= ? AND COUNT(*) >= ?
@@ -293,6 +296,7 @@ class BrokerAccumulationScreeningService
                     FROM market_observations
                     WHERE bar_date BETWEEN ? AND ? 
                       AND source = 'IDX Edge PRO'
+                      AND board_scope = 'RG'
                       AND ticker NOT IN ('^JKSE', 'IHSG', 'JKSE')
                 )
                 SELECT 

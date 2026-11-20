@@ -66,14 +66,20 @@ class TelegramTwoWayService
         if (! $isSynthetic) {
             $existing = TelegramConversation::where('telegram_update_id', $updateId)->first();
             if ($existing) {
-                return [
-                    'status' => 'duplicate',
-                    'intent' => $existing->detected_intent,
-                    'reply_text' => $existing->outbound_reply_text,
-                    'conversation_id' => $existing->id,
-                    'duration_ms' => 0,
-                    'is_duplicate' => true,
-                ];
+                // If existing record was poisoned by DATA_NOT_VALIDATED bug on cross-ticker screening, allow re-evaluation
+                $isPoisoned = str_contains($existing->outbound_reply_text, 'Bar DATA belum tervalidasi final')
+                    && ! preg_match('/(?:emiten|saham)\s+DATA\b/i', $existing->inbound_text);
+
+                if (! $isPoisoned) {
+                    return [
+                        'status' => 'duplicate',
+                        'intent' => $existing->detected_intent,
+                        'reply_text' => $existing->outbound_reply_text,
+                        'conversation_id' => $existing->id,
+                        'duration_ms' => 0,
+                        'is_duplicate' => true,
+                    ];
+                }
             }
         }
 
@@ -124,18 +130,20 @@ class TelegramTwoWayService
             $cleanReplyText = mb_convert_encoding($replyText, 'UTF-8', 'UTF-8');
             $cleanInboundText = mb_convert_encoding($inboundText, 'UTF-8', 'UTF-8');
 
-            $convo = TelegramConversation::create([
-                'telegram_update_id' => $updateId,
-                'chat_id' => $chatId,
-                'user_id' => $userId,
-                'user_name' => $userName,
-                'inbound_text' => $cleanInboundText,
-                'detected_intent' => $intent,
-                'context_signal_id' => $contextSignalId,
-                'outbound_reply_text' => $cleanReplyText,
-                'provenance' => $provenance,
-                'response_time_ms' => $durationMs,
-            ]);
+            $convo = TelegramConversation::updateOrCreate(
+                ['telegram_update_id' => $updateId],
+                [
+                    'chat_id' => $chatId,
+                    'user_id' => $userId,
+                    'user_name' => $userName,
+                    'inbound_text' => $cleanInboundText,
+                    'detected_intent' => $intent,
+                    'context_signal_id' => $contextSignalId,
+                    'outbound_reply_text' => $cleanReplyText,
+                    'provenance' => $provenance,
+                    'response_time_ms' => (int) round((microtime(true) - $startTime) * 1000),
+                ]
+            );
         }
 
         return [
@@ -149,23 +157,92 @@ class TelegramTwoWayService
     }
 
     /**
+     * Resolve instrument context dynamically with hierarchy:
+     * 1. Explicit valid ticker in text;
+     * 2. Referenced conversation via reply_to;
+     * 3. Last unambiguous ticker from user's conversation history;
+     * 4. Return null if ambiguous or none found.
+     */
+    public function resolveInstrumentContext(string $text, ?string $userId = null, ?string $replyToId = null): array
+    {
+        // 1. Direct explicit ticker check
+        $cand = $this->extractTicker($text);
+        if ($cand !== null) {
+            return [
+                'ticker' => $cand,
+                'source' => 'EXPLICIT_INBOUND_PROMPT',
+                'is_ambiguous' => false,
+            ];
+        }
+
+        // 2. Referenced conversation via reply_to_message_id if provided
+        if ($replyToId) {
+            $refConv = TelegramConversation::where(function ($q) use ($replyToId) {
+                $q->where('telegram_update_id', (string) $replyToId)
+                    ->orWhereJsonContains('provenance->outbound_message_id', (string) $replyToId)
+                    ->orWhereJsonContains('provenance->inbound_message_id', (string) $replyToId);
+            })->first();
+
+            if ($refConv) {
+                $refTicker = $this->extractTicker($refConv->inbound_text) ?? ($refConv->provenance['ticker'] ?? null);
+                if ($refTicker) {
+                    return [
+                        'ticker' => $refTicker,
+                        'source' => 'REFERENCED_REPLY_TO',
+                        'is_ambiguous' => false,
+                    ];
+                }
+            }
+        }
+
+        // 3. Last unambiguous ticker from user's conversation history
+        if ($userId) {
+            $recentConvs = TelegramConversation::where('user_id', (string) $userId)
+                ->latest('id')
+                ->take(5)
+                ->get();
+
+            $foundTickers = [];
+            foreach ($recentConvs as $c) {
+                $t = $this->extractTicker($c->inbound_text) ?? ($c->provenance['ticker'] ?? null);
+                if ($t && ! in_array($t, $foundTickers, true)) {
+                    $foundTickers[] = $t;
+                }
+            }
+
+            // If exactly one unique ticker found across recent turns -> unambiguous
+            if (count($foundTickers) === 1) {
+                return [
+                    'ticker' => $foundTickers[0],
+                    'source' => 'RECENT_CONVERSATION_HISTORY',
+                    'is_ambiguous' => false,
+                ];
+            } elseif (count($foundTickers) > 1) {
+                // Ambiguous: multiple recent tickers discussed
+                return [
+                    'ticker' => null,
+                    'candidates' => $foundTickers,
+                    'source' => 'AMBIGUOUS_MULTI_TICKER_HISTORY',
+                    'is_ambiguous' => true,
+                ];
+            }
+        }
+
+        return [
+            'ticker' => null,
+            'source' => 'NONE_FOUND',
+            'is_ambiguous' => false,
+        ];
+    }
+
+    /**
      * Find recent ticker discussed in recent conversations.
      */
     protected function findRecentContextTicker(string $userId): ?string
     {
-        $last = TelegramConversation::where('user_id', $userId)
-            ->latest('id')
-            ->take(5)
-            ->get();
+        $res = $this->resolveInstrumentContext('', $userId);
 
-        foreach ($last as $c) {
-            $cand = $this->extractTicker($c->inbound_text);
-            if ($cand) {
-                return $cand;
-            }
-        }
-
-        return null;
+        return $res['ticker'] ?? null;
     }
 
     /**
@@ -173,22 +250,36 @@ class TelegramTwoWayService
      */
     public function extractTicker(string $text): ?string
     {
+        $knownKeys = array_keys(BeiUniverseRegistry::KNOWN_BEI_ISSUERS);
+        $cleanKeys = array_filter($knownKeys, fn ($k) => $k !== '^JKSE');
+        $knownIssuerPattern = '/\b('.implode('|', $cleanKeys).')\b/i';
+
+        // 0. Explicit rejection of cross-ticker screening phrases from being treated as single ticker
+        if (preg_match('/(carikan|cari saham|saham untuk|daftar saham|screening|kandidat saham|rekomendasi saham|saham apa|saham mana|saham scalping)/i', $text) && ! preg_match('/(?:emiten|saham)\s+([A-Za-z0-9^]{2,8})/i', $text)) {
+            return null;
+        }
+
+        // 0b. Reject generic "scalping" without explicit ticker specification
+        if (preg_match('/\b(?:scalping|scalp|day trade|daytrade)\b/i', $text) && ! preg_match($knownIssuerPattern, $text) && ! preg_match('/(?:emiten|saham)\s+([A-Za-z0-9^]{2,8})/i', $text)) {
+            return null;
+        }
+
+        // 0c. Generic word "data" rejection: never treat bare word "data" as ticker DATA unless preceded by "saham" or "emiten"
+        if (preg_match('/\bdata\b/i', $text) && ! preg_match('/(?:emiten|saham)\s+data\b/i', $text)) {
+            $text = preg_replace('/\bdata\b/i', ' ', $text);
+        }
+
         // 1. Direct check for IHSG / ^JKSE index
         if (preg_match('/(\^JKSE|\bIHSG\b)/i', $text)) {
             return '^JKSE';
         }
 
         // 2. Direct check against KNOWN_BEI_ISSUERS catalog (including PTRO, ICBP, UNVR, etc.)
-        $knownKeys = array_keys(BeiUniverseRegistry::KNOWN_BEI_ISSUERS);
-        // Exclude ^JKSE from regex
-        $cleanKeys = array_filter($knownKeys, fn ($k) => $k !== '^JKSE');
-        $pattern = '/\b('.implode('|', $cleanKeys).')\b/i';
-        if (preg_match($pattern, $text, $m)) {
+        if (preg_match($knownIssuerPattern, $text, $m)) {
             return strtoupper($m[1]);
         }
 
-        // 3. Match explicit phrase like "emiten XYZ", "saham XYZ", or "analisis [emiten/saham] XYZ"
-        // Reject phrases denoting universe scope or generic words (e.g. "saham pilot", "saham apa", "saham yang")
+        // 3. Match explicit phrase like "emiten XYZ", "saham XYZ"
         $commonStopwords = [
             'EMITEN', 'SAHAM', 'INI', 'TERBARU', 'GIMANA', 'BAGAINAMA', 'BAGBIMANA', 'SEKARANG', 'HARI',
             'SISTEM', 'SYSTEM', 'WATCHLIST', 'PANTAU', 'DAFTAR', 'TADI', 'LALU', 'DULU', 'YANG', 'KITA',
@@ -197,41 +288,55 @@ class TelegramTwoWayService
             'MENGAPA', 'CARA', 'MEMBANDINGKAN', 'INVESTASI', 'TRADING', 'SWING', 'PASAR', 'REKOMENDASI',
             'REKOMANDASI', 'SEMUA', 'BERIKUT', 'SITUASI', 'KONDISI', 'OVERVIEW', 'PILOT', 'INDEX', 'KANDIDAT',
             'FILTER', 'BULAN', 'SESI', 'HARGA', 'NET', 'BUYER', 'SELLER', 'BROKER', 'EDGE', 'BEI', 'IDX',
+            'TEKNIKAL', 'FUNDAMENTAL', 'KESIMPULAN', 'ANALISIS', 'ANALISA', 'SUPPORT', 'RESISTANCE', 'NAIK', 'TURUN',
+            'MARKET', 'PORTOFOLIO', 'PORTFOLIO', 'MODAL', 'DANA', 'UANG', 'KAS', 'COCOK', 'ENAKNYA', 'MASUK',
+            'SCALPING', 'SCALP', 'CARIKAN', 'API', 'INFO', 'TOLONG',
         ];
 
-        $registry = app(BeiUniverseRegistry::class);
-        $isValidCand = function (string $cand) use ($commonStopwords, $registry): bool {
-            if (in_array($cand, $commonStopwords, true)) {
-                return false;
-            }
-            if ($cand === '^JKSE' || $cand === 'IHSG') {
-                return true;
-            }
-            if (in_array($cand, BeiUniverseRegistry::KNOWN_FOREIGN_INSTRUMENTS, true)) {
-                return true;
-            }
-
-            $res = $registry->resolveInstrument($cand);
-
-            return $res['is_valid'] ?? false;
-        };
-
+        // 3a. Explicit noun syntax: "emiten XYZ" or "saham XYZ"
         if (preg_match('/(?:emiten|saham)\s+([A-Za-z0-9^]{2,8})/i', $text, $m)) {
             $cand = strtoupper(trim($m[1]));
             if (! in_array($cand, $commonStopwords, true)) {
-                return $cand;
+                $registry = app(BeiUniverseRegistry::class);
+                $res = $registry->resolveInstrument($cand);
+                if ($res['is_valid'] ?? false) {
+                    return $cand;
+                }
             }
         }
-        if (preg_match('/(?:analisis|analisa|bedah|kondisi|kinerja|tambah|tambahkan)\s+(?:emiten\s+|saham\s+)?([A-Za-z0-9^]{2,8})/i', $text, $m)) {
+        if (preg_match('/(?:analisis|analisa|bedah|kondisi|kinerja|tambah|tambahkan)\s+(?:emiten\s+|saham\s+)([A-Za-z0-9^]{2,8})/i', $text, $m)) {
             $cand = strtoupper(trim($m[1]));
             if (! in_array($cand, $commonStopwords, true)) {
                 return $cand;
             }
         }
-        if (preg_match('/\b([A-Za-z]{4})\s+(?:ke\s+)?(?:watchlist|daftar pantau)/i', $text, $m)) {
+
+        // 3b. Action verb with bare word: only treat as ticker candidate if valid in BEI registry
+        if (preg_match('/(?:analisis|analisa|bedah|kondisi|kinerja|tambah|tambahkan)\s+([A-Za-z0-9^]{2,8})/i', $text, $m)) {
             $cand = strtoupper(trim($m[1]));
             if (! in_array($cand, $commonStopwords, true)) {
-                return $cand;
+                $registry = app(BeiUniverseRegistry::class);
+                $resolution = $registry->resolveInstrument($cand);
+                if ($resolution['is_valid'] ?? false) {
+                    return $cand;
+                }
+            }
+        }
+
+        // 4. Standalone 4-letter word check against BeiUniverseRegistry (covers dynamic discovery & DB)
+        // Only run if the query explicitly indicates analytical, ticker, or financial context
+        $hasContext = preg_match('/\b(saham|emiten|analisis|analisa|kinerja|laba|rugi|harga|chart|grafik|broker|foreign|asing|bandar|fundamental|teknikal|day trade|swing|rekomendasi)\b/i', $text);
+        if ($hasContext && preg_match_all('/\b([A-Za-z]{4})\b/', $text, $allMatches)) {
+            $registry = app(BeiUniverseRegistry::class);
+            foreach ($allMatches[1] as $rawCandidate) {
+                $cand = strtoupper(trim($rawCandidate));
+                if (in_array($cand, $commonStopwords, true)) {
+                    continue;
+                }
+                $resolution = $registry->resolveInstrument($cand);
+                if ($resolution['is_valid']) {
+                    return $cand;
+                }
             }
         }
 
@@ -244,6 +349,25 @@ class TelegramTwoWayService
     public function classifyIntent(string $text): string
     {
         $lower = strtolower(trim($text));
+        $candTicker = $this->extractTicker($text);
+
+        // General ticker analysis requests with snapshot/date/limitation language require async grounded reasoning.
+        if ($candTicker !== null
+            && preg_match('/\banalisis\s+umum\b/i', $lower)
+            && preg_match('/\b(snapshot|tanggal|batas|keterbatasan|data tersedia)\b/i', $lower)
+            && ! $this->isBrokerQuery($text)) {
+            return 'QUERY_COMPREHENSIVE_ANALYSIS';
+        }
+
+        // A named ticker analysis remains a ticker request unless broker flow is explicit.
+        if ($candTicker !== null && preg_match('/\b(analisis|analisa|bedah)\b/i', $lower) && ! $this->isBrokerQuery($text)) {
+            return 'QUERY_TICKER_STATUS';
+        }
+
+        // Cross-ticker intraday screening requires no named instrument.
+        if ($candTicker === null && preg_match('/(scalping|scalp|day trade|daytrade|intraday)/i', $lower) && preg_match('/(cari|carikan|rekomendasi|saham apa|saham mana|daftar saham|screening|pantau)/i', $lower)) {
+            return 'SCREENING_INTRADAY';
+        }
 
         if (str_starts_with($lower, '/help') || $lower === 'help' || str_contains($lower, 'bantuan') || str_contains($lower, 'panduan')) {
             return 'COMMAND_HELP';
@@ -275,15 +399,17 @@ class TelegramTwoWayService
         if (preg_match('/(kenapa data|mengapa data|alasan belum lengkap|data belum lengkap)/i', $lower)) {
             return 'QUERY_DATA_COMPLETENESS_RATIONALE';
         }
-        // Complex inquiry: Market analysis + recommendation OR scheduling
-        $assistant = app(TelegramMarketAssistantService::class);
-        $parsed = $assistant->parseStructuredRequest($text);
-        if ($parsed['is_complex_inquiry']) {
-            return 'COMMAND_SCHEDULED_MARKET_ANALYSIS';
-        }
-
         if (str_starts_with($lower, '/screen') || preg_match('/(screening|cari kandidat|kandidat saham|rekom[ea]ndasi|saham apa yang sesuai|saham mana yg bakal naik)/i', $lower)) {
             return 'COMMAND_SCREENING';
+        }
+
+        // Complex inquiry: Market analysis + recommendation OR scheduling (only if schedule or explicit market inquiry mentioned)
+        if (preg_match('/(?:di\s+|pada\s+|pukul\s+|jam\s+|pkl\s+)\d{1,2}[:.]\d{2}/i', $text) || str_contains($lower, 'jadwal') || str_contains($lower, 'analisis pasar') || str_contains($lower, 'kondisi pasar')) {
+            $assistant = app(TelegramMarketAssistantService::class);
+            $parsed = $assistant->parseStructuredRequest($text);
+            if ($parsed['is_complex_inquiry']) {
+                return 'COMMAND_SCHEDULED_MARKET_ANALYSIS';
+            }
         }
         if ((str_starts_with($lower, '/bandingkan') || str_starts_with($lower, '/compare') || preg_match('/^(bandingkan|komparasi)\b/i', $lower) || preg_match('/\bvs\b/i', $lower)) && count($this->extractTickers($text)) >= 2) {
             return 'COMMAND_COMPARISON';
@@ -298,7 +424,17 @@ class TelegramTwoWayService
             return 'QUERY_COMPREHENSIVE_ANALYSIS';
         }
 
-        // 1. Broker accumulation & distribution queries (distinguish single-ticker vs cross-ticker screening)
+        // 1. Follow-up analytical questions without explicit ticker (e.g. "Jadi untuk kesimpulan teknikalnya gimana?", "Support resistance berapa?")
+        if ($candTicker === null && preg_match('/(teknikal|support|resistance|day trade|swing trade|kesimpulan)/i', $lower) && preg_match('/(gimana|berapa|siapa|kondisi|masuk|harga)/i', $lower)) {
+            return 'QUERY_COMPREHENSIVE_ANALYSIS';
+        }
+
+        // 2. Explicit cross-ticker screening follow-ups do not require broker wording.
+        if ($candTicker === null && $this->isCrossTickerScreeningQuery($text)) {
+            return 'SCREENING_BROKER_ACCUMULATION';
+        }
+
+        // 3. Broker accumulation & distribution queries (distinguish single-ticker vs cross-ticker screening)
         if ($this->isBrokerQuery($text)) {
             // If query explicitly requests cross-ticker filtering / candidates / multi-ticker pilot scope, route to screening
             if ($this->isCrossTickerScreeningQuery($text)) {
@@ -314,7 +450,7 @@ class TelegramTwoWayService
         // Direct to conversational Gemini if query contains evaluative, pricing, capital, or decision-making nuance
         // (Excludes specific horizon restriction keywords, standard ticker analysis, and fundamental/technical queries)
         if (! str_contains($lower, 'investasi') && ! str_contains($lower, 'day trade') && ! str_contains($lower, 'intraday') && ! str_contains($lower, 'drop table') && ! str_contains($lower, 'rm -rf')) {
-            if ($this->isConsultativeQuery($text) && ! str_starts_with($lower, 'analisis emiten') && ! str_starts_with($lower, '/analisis') && ! str_contains($lower, 'fundamental') && ! str_contains($lower, 'teknikal')) {
+            if ($this->isConsultativeQuery($text) && ! str_starts_with($lower, 'analisis emiten') && ! str_starts_with($lower, 'analisis saham') && ! str_starts_with($lower, '/analisis') && ! str_contains($lower, 'fundamental') && ! str_contains($lower, 'teknikal')) {
                 return 'GENERAL_CONVERSATION';
             }
         }
@@ -382,9 +518,17 @@ class TelegramTwoWayService
             case 'COMMAND_STATUS':
                 $nowWib = Carbon::now('Asia/Jakarta')->format('d M Y, H:i').' WIB';
 
-                // 1. Total historical records across entire database
+                // 1. Compact coverage snapshot; keep registry and observed instruments separate.
                 $totalArchiveRecords = MarketObservation::count();
+                $registryCount = IdxCompanyRegistry::count();
+                $observedInstrumentCount = MarketObservation::where('source', 'IDX Edge PRO')
+                    ->whereNotIn('ticker', ['^JKSE', 'JKSE', 'IHSG'])
+                    ->distinct()
+                    ->count('ticker');
+                $latestObservation = MarketObservation::where('source', 'IDX Edge PRO')->latest('bar_date')->first();
+                $latestIdxEdge = $latestObservation?->bar_date?->format('Y-m-d');
 
+                /*
                 // 2. Distinct raw symbols vs Normalized unique instruments
                 $rawSymbols = MarketObservation::distinct('ticker')->pluck('ticker');
                 $totalRawSymbolsCount = $rawSymbols->count();
@@ -412,13 +556,14 @@ class TelegramTwoWayService
                 $idxEdgeEquityCount = $idxEdgeEquityTickers->count();
 
                 $latestIdxEdge = MarketObservation::where('source', 'IDX Edge PRO')->max('bar_date');
-                $latestYahoo = MarketObservation::where('source', 'LIKE', '%Yahoo%')->max('bar_date');
+                $latestYahoo = MarketObservation::where('source', 'LIKE', '%Yahoo%')->max('bar_date'); */
 
                 // 4. Runtime Health Checks with Timestamps
                 $dbHealthy = false;
+                $databaseName = null;
                 try {
-                    DB::select('SELECT 1');
-                    $dbHealthy = true;
+                    $databaseName = DB::scalar('SELECT current_database()');
+                    $dbHealthy = is_string($databaseName) && $databaseName !== '';
                 } catch (\Throwable $e) {
                     $dbHealthy = false;
                 }
@@ -432,31 +577,55 @@ class TelegramTwoWayService
                     ? date('Y-m-d H:i:s', filemtime(storage_path('logs/hermes_outbox.log')))
                     : 'N/A';
 
-                $aiMode = config('services.hermes.orchestrator_enabled', false)
-                    ? 'Hermes Reasoner Aktif (ag/gemini-3.8-flash-high via 9router; EOD Otomatis Nonaktif)'
-                    : 'Research-Only Extractive Engine';
+                $now = Carbon::now('Asia/Jakarta');
+                $expectedTradingDay = app(BeiCalendarService::class)->getCurrentTradingDay($now)->toDateString();
+                $freshness = $latestObservation && $latestObservation->bar_date->toDateString() >= $expectedTradingDay
+                    ? 'CURRENT_AS_OF_EXPECTED_SESSION'
+                    : 'STALE';
+                $gapTickers = DB::table('idx_company_registries as r')
+                    ->where('r.instrument_type', 'EQUITY')
+                    ->where('r.eod_target_session', $expectedTradingDay)
+                    ->where('r.eod_refresh_status', 'MAX_RETRIES_EXCEEDED')
+                    ->whereNotExists(function ($query) use ($expectedTradingDay) {
+                        $query->select(DB::raw(1))
+                            ->from('market_observations as o')
+                            ->whereColumn('o.ticker', 'r.ticker')
+                            ->where('o.source', 'IDX Edge PRO')
+                            ->whereDate('o.bar_date', $expectedTradingDay)
+                            ->where('o.validation_status', 'VALID');
+                    })
+                    ->orderBy('r.ticker')
+                    ->pluck('r.ticker')
+                    ->values();
+                $finality = app(CanonicalMarketReadService::class)->finality($latestObservation);
+                $onDemandEnabled = (bool) config('services.ai_router.on_demand_enabled', false);
+                $routerConfigured = $onDemandEnabled
+                    && (string) config('services.ai_router.endpoint', '') !== ''
+                    && (string) config('services.ai_router.model_id', '') !== ''
+                    && (string) config('services.ai_router.api_key', '') !== '';
+                $aiMode = $routerConfigured
+                    ? 'Aktif via 9router (on-demand only)'
+                    : 'Nonaktif; konfigurasi konsultasi belum siap';
 
                 return "STATUS SISTEM AETHER INTELLIGENCE\n"
                     ."──────────────────────────────────────────\n"
                     ."• Waktu Server       : {$nowWib}\n"
-                    .'• Status Database    : '.($dbHealthy ? 'TERHUBUNG (PostgreSQL project-bot OK)' : 'TERPUTUS')."\n"
-                    ."• Rekod Arsip Total  : {$totalArchiveRecords} bar\n"
-                    ."• Simbol Tersimpan   : {$totalRawSymbolsCount} simbol mentah (^JKSE & JKSE terpetakan ke 1 indeks)\n"
-                    ."• Instrumen Unik     : {$uniqueInstrumentsCount} instrumen ({$equityCount} ekuitas + {$indexCount} indeks komposit)\n"
-                    ."• Sumber Operasional : IDX Edge PRO (Pasar Reguler / Board RG)\n"
-                    ."  - Saham Pilot IDX  : {$idxEdgeEquityCount} saham ({$idxEdgeEquityTickers->implode(', ')})\n"
-                    .'  - Bar Terkini IDX  : '.($latestIdxEdge ?: 'N/A')." (Sesi Resmi Terverifikasi)\n"
-                    .'• Arsip Historis     : Cold Storage Yahoo Finance ('.($latestYahoo ?: 'N/A').")\n"
-                    ."• Populasi Kohort Sinyal:\n"
-                    ."  - Live Forward Directional : 0 sinyal aktif (Menunggu sesi live bursa)\n"
-                    ."  - Retrospective Replay      : 10 rekod abstain (Audit point-in-time)\n"
-                    ."  - Evaluasi Historis Lama   : 30 rekod (Historical fallback)\n"
-                    ."• Mode Penalaran AI  : {$aiMode}\n"
-                    ."• Broker Order       : 0 (Simulasi & Research-Only)\n"
-                    ."• Runtime & Worker Health (Bertimestamp):\n"
-                    ."  - Consultation Worker : Selesai sesi aktif ({$latestScheduleTick})\n"
-                    ."  - Outbox Dispatcher   : Selesai pengiriman ({$latestOutboxTick})\n"
-                    ."  - Gateway Transport   : Process PID 19844 Berjalan\n"
+                    .'• Database / akses   : '.($dbHealthy ? "TERHUBUNG ({$databaseName}); runtime read-only" : 'TERPUTUS')."\n"
+                    ."• Observasi historis : {$totalArchiveRecords} bar\n"
+                    ."• Registri universe  : {$registryCount} registri\n"
+                    ."• Instrumen dengan data: {$observedInstrumentCount} instrumen; cakupan tidak dipaksa sama dengan registri\n"
+                    .'• Snapshot terakhir  : '.($latestIdxEdge ?: 'N/A')." (IDX Edge PRO; sumber sekunder, finality belum resmi)\n"
+                    ."• Freshness           : {$freshness}; sesi diharapkan {$expectedTradingDay}\n"
+                    .'• Gap coverage       : '.($gapTickers->isEmpty() ? 'tidak ada pada target sesi' : $gapTickers->implode(', '))."\n"
+                    ."• Finality            : {$finality}\n"
+                    ."• AI on-demand       : {$aiMode}\n"
+                    .'• Provider konsultasi : '.($routerConfigured ? 'terkonfigurasi; probe runtime terpisah' : 'belum terkonfigurasi')."\n"
+                    ."• Model ML            : TIDAK AKTIF; artefak produksi belum tersedia\n"
+                    ."• Gateway             : satu receiver; polling dan Aether handler wired\n"
+                    ."• Worker / antrean    : consultation scheduler dan outbox terpisah; rincian di dashboard\n"
+                    ."• Kegagalan tertunda  : provider quota/backoff dan outbox DELIVERY_UNKNOWN diaudit\n"
+                    ."• Broker order        : 0; research-only\n"
+                    ."• Catatan             : snapshot belum mutakhir; rincian instrumen tersedia di dashboard\n"
                     .'──────────────────────────────────────────';
 
             case 'COMMAND_SIGNALS':
@@ -733,6 +902,11 @@ class TelegramTwoWayService
 
                 return app(StockScreeningService::class)->formatScreeningResponse($strat);
 
+            case 'SCREENING_INTRADAY':
+                $provenance['screening_run_id'] = 'SCREEN_INTRADAY_'.now()->format('Ymd_His');
+
+                return $this->formatIntradayScalpingScreeningResponse($text, $provenance);
+
             case 'COMMAND_SCHEDULED_MARKET_ANALYSIS':
                 $assistant = app(TelegramMarketAssistantService::class);
                 $parsed = $assistant->parseStructuredRequest($text, (string) ($provenance['user_id'] ?? $this->allowedUserId));
@@ -795,32 +969,50 @@ class TelegramTwoWayService
                 return app(StockScreeningService::class)->formatComparisonResponse($tickers);
 
             case 'QUERY_COMPREHENSIVE_ANALYSIS':
+                $userIdStr = (string) ($provenance['user_id'] ?? $this->allowedUserId);
+                $replyTo = $provenance['reply_to_message_id'] ?? null;
+                $resolved = $this->resolveInstrumentContext($text, $userIdStr, $replyTo);
+
+                // If completely ambiguous across multiple tickers, ask clarification immediately
+                if ($resolved['is_ambiguous']) {
+                    $candList = implode(', ', $resolved['candidates'] ?? []);
+
+                    return "Saham mana yang Anda maksud untuk evaluasi teknikal & broker ini?\n"
+                        ."Percakapan sebelumnya membahas beberapa saham: {$candList}.\n"
+                        .'Mohon sebutkan kode saham yang ingin dianalisis (contoh: "analisis teknikal BULL").';
+                }
+
+                $cand = $resolved['ticker'];
+                if (! $cand) {
+                    return 'Mohon sebutkan kode saham 4 huruf yang ingin dianalisis (contoh: "analisis teknikal BULL").';
+                }
+
                 // Check if running in async mode (via background worker) or synchronous mode (tests/CLI with _sync)
                 if (! empty($provenance['is_async_job']) || ! empty($provenance['is_sync'])) {
-                    $provenance['inference_mode'] = 'ASYNC_AI_CONVERSATION (ag/gemini-3.8-flash-high via 9router)';
+                    $provenance['inference_mode'] = 'ASYNC_AI_CONVERSATION (gemini-3.6-flash via consultation_ai)';
+                    $provenance['ticker'] = $cand;
 
                     return app(AiConversationService::class)->handleConversation(
                         $text,
-                        (string) ($provenance['user_id'] ?? $this->allowedUserId),
                         (string) ($provenance['chat_id'] ?? $this->allowedUserId),
+                        $userIdStr,
                         $signalId,
                         $provenance
                     );
                 }
 
                 // Inbound Handler Fast-Track: Register durable async job and return instant acknowledgment!
-                $cand = $this->extractTicker($text);
-                $candLabel = $cand ?: 'emiten terkait';
                 $assistant = app(TelegramMarketAssistantService::class);
                 $job = $assistant->scheduleJob(
                     [
                         'raw_text' => $text,
+                        'ticker' => $cand,
                         'signal_id' => $signalId,
                         'tolerance_minutes' => 15,
                     ],
                     [
                         'chat_id' => $provenance['chat_id'] ?? $this->allowedUserId,
-                        'user_id' => $provenance['user_id'] ?? $this->allowedUserId,
+                        'user_id' => $userIdStr,
                         'update_id' => $provenance['telegram_update_id'] ?? null,
                         'inbound_message_id' => $provenance['inbound_message_id'] ?? null,
                         'request_type' => 'ASYNC_CONSULTATION',
@@ -830,10 +1022,11 @@ class TelegramTwoWayService
 
                 $provenance['async_consultation_job_id'] = $job->id;
                 $provenance['is_async_acknowledged'] = true;
+                $provenance['ticker'] = $cand;
 
-                return "Permintaan analisis lengkap {$candLabel} (fundamental, teknikal, broker, day trade/swing, info) diterima dan sedang diproses (Job #{$job->id}).\n"
-                    ."Sistem memverifikasi histori EOD, rasio keuangan, aliran broker Pasar Reguler, serta keterbukaan informasi terkini.\n"
-                    .'Hasil komprehensif akan dikirimkan otomatis setelah selesai.';
+                return "Permintaan analisis {$cand} (teknikal, support/resistance, broker summary) diterima dan sedang diproses (Job #{$job->id}).\n"
+                    ."Sistem memverifikasi histori bar EOD, level teknikal, dan ringkasan broker Pasar Reguler.\n"
+                    .'Hasil terverifikasi akan dikirimkan otomatis setelah selesai.';
 
             case 'SCREENING_BROKER_ACCUMULATION':
                 // Check if running in async mode (via background worker) or synchronous mode (tests/CLI with _sync)
@@ -871,7 +1064,7 @@ class TelegramTwoWayService
             case 'QUERY_BROKER_FLOW':
                 // Check if running in async mode (via background worker) or synchronous mode (tests/CLI with _sync)
                 if (! empty($provenance['is_async_job']) || ! empty($provenance['is_sync'])) {
-                    $provenance['inference_mode'] = 'ASYNC_AI_CONVERSATION (ag/gemini-3.8-flash-high via 9router)';
+                    $provenance['inference_mode'] = 'ASYNC_AI_CONVERSATION (gemini-3.6-flash via consultation_ai)';
 
                     return app(AiConversationService::class)->handleConversation(
                         $text,
@@ -923,7 +1116,7 @@ class TelegramTwoWayService
             default:
                 // Check if running in async mode (via background worker) or explicit synchronous mode
                 if (! empty($provenance['is_async_job']) || ! empty($provenance['is_sync'])) {
-                    $provenance['inference_mode'] = 'ASYNC_AI_CONVERSATION (ag/gemini-3.8-flash-high via 9router)';
+                    $provenance['inference_mode'] = 'ASYNC_AI_CONVERSATION (gemini-3.6-flash via consultation_ai)';
 
                     return app(AiConversationService::class)->handleConversation(
                         $text,
@@ -934,58 +1127,27 @@ class TelegramTwoWayService
                     );
                 }
 
-                // If query is an analytical or consultative request, handle via durable async job queue
-                if ($this->isConsultativeQuery($text)) {
-                    $cand = $this->extractTicker($text);
-                    if ($cand !== null) {
-                        $registry = app(BeiUniverseRegistry::class);
-                        $resCand = $registry->resolveInstrument($cand);
-                        if (! ($resCand['is_valid'] ?? false)) {
-                            return "KLARIFIKASI CAKUPAN INSTRUMEN\n"
-                                ."──────────────────────────────────────────\n"
-                                .($resCand['message'] ?? "Kode emiten '{$cand}' tidak valid.")."\n\n"
-                                ."Aether Market Intelligence hanya memproses saham resmi Bursa Efek Indonesia (BEI).\n"
-                                ."Contoh Pertanyaan Valid:\n"
-                                ."• \"analisis emiten BBCA\"\n"
-                                ."• \"analisis emiten PTRO\"\n"
-                                ."• \"analisis emiten ICBP\"\n"
-                                .'• "SMRA bagaimana?"';
-                        }
+                // Strictly boundary check: Never execute slow live AI inline during webhook/CLI gateway handling!
+                // All natural language conversations and consultations are enqueued as durable jobs so gateway returns instantly (< 500ms).
+                $assistant = app(TelegramMarketAssistantService::class);
+                $cand = $this->extractTicker($text);
+                $jobParams = [
+                    'raw_text' => $text,
+                    'signal_id' => $signalId,
+                    'tolerance_minutes' => 15,
+                ];
+
+                if ($cand !== null) {
+                    $registry = app(BeiUniverseRegistry::class);
+                    $resCand = $registry->resolveInstrument($cand);
+                    if ($resCand['is_valid'] ?? false) {
+                        $jobParams['ticker'] = $resCand['ticker'] ?? $cand;
+                        $provenance['ticker'] = $resCand['ticker'] ?? $cand;
                     }
-
-                    $assistant = app(TelegramMarketAssistantService::class);
-                    $job = $assistant->scheduleJob(
-                        [
-                            'raw_text' => $text,
-                            'signal_id' => $signalId,
-                            'tolerance_minutes' => 15,
-                        ],
-                        [
-                            'chat_id' => $provenance['chat_id'] ?? $this->allowedUserId,
-                            'user_id' => $provenance['user_id'] ?? $this->allowedUserId,
-                            'update_id' => $provenance['telegram_update_id'] ?? null,
-                            'inbound_message_id' => $provenance['inbound_message_id'] ?? null,
-                            'request_type' => 'ASYNC_CONSULTATION',
-                            'tolerance_minutes' => 15,
-                        ]
-                    );
-
-                    $provenance['async_consultation_job_id'] = $job->id;
-                    $provenance['is_async_acknowledged'] = true;
-
-                    // Neutral acknowledgment as strictly required by prompt
-                    return "Permintaan analisis diterima dan sedang diproses (Job #{$job->id}).\nHasil validasi dan sintesis akan dikirimkan otomatis setelah selesai.";
                 }
 
-                // Strictly boundary check: Never execute slow live AI inline during webhook/CLI gateway handling!
-                // All non-trivial user conversations must be enqueued as durable jobs so gateway returns instantly (< 500ms).
-                $assistant = app(TelegramMarketAssistantService::class);
                 $job = $assistant->scheduleJob(
-                    [
-                        'raw_text' => $text,
-                        'signal_id' => $signalId,
-                        'tolerance_minutes' => 15,
-                    ],
+                    $jobParams,
                     [
                         'chat_id' => $provenance['chat_id'] ?? $this->allowedUserId,
                         'user_id' => $provenance['user_id'] ?? $this->allowedUserId,
@@ -999,7 +1161,9 @@ class TelegramTwoWayService
                 $provenance['async_consultation_job_id'] = $job->id;
                 $provenance['is_async_acknowledged'] = true;
 
-                return "Pesan Anda diterima dan sedang diproses oleh Aether Intelligence (Job #{$job->id}).\nJawaban akan dikirimkan otomatis setelah analisis selesai.";
+                return $this->isConsultativeQuery($text)
+                    ? "Permintaan analisis diterima dan sedang diproses (Job #{$job->id}).\nHasil validasi dan sintesis akan dikirimkan otomatis setelah selesai."
+                    : "Pesan Anda diterima dan sedang diproses oleh Aether Intelligence (Job #{$job->id}).\nJawaban akan dikirimkan otomatis setelah analisis selesai.";
         }
     }
 
@@ -1024,12 +1188,21 @@ class TelegramTwoWayService
 
         $validTickers = [];
         foreach (array_unique($matches[1]) as $cand) {
-            if (in_array($cand, $commonStopwords, true)) {
+            $candUpper = strtoupper($cand);
+            // Ignore generic word 'DATA' only if not preceded by 'saham' or 'emiten'
+            if ($candUpper === 'DATA' && ! preg_match('/(?:emiten|saham)\s+DATA\b/i', $text) && ! preg_match('/(?:bandingkan|compare)\s+.*DATA/i', $text)) {
+                // Check if user specifically compares DATA
+                if (! preg_match('/\bDATA\b.*\b(?:dan|vs|dengan)\b/i', $text) && ! preg_match('/\b(?:dan|vs|dengan)\b.*\bDATA\b/i', $text)) {
+                    continue;
+                }
+            }
+
+            if (in_array($candUpper, $commonStopwords, true)) {
                 continue;
             }
-            $res = $registry->resolveInstrument($cand);
+            $res = $registry->resolveInstrument($candUpper);
             if ($res['is_valid'] ?? false) {
-                $validTickers[] = $cand;
+                $validTickers[] = $candUpper;
             }
         }
 
@@ -1050,7 +1223,7 @@ class TelegramTwoWayService
     {
         $lower = strtolower($text);
 
-        return (bool) preg_match('/(akumulasi|mengakumulasi|distribusi|mendistribusi|bandarmologi|broker|siapa yang beli|siapa yang jual|siapa saja yang|top buyer|top seller|aliran dana broker|cakupan tetap|10 saham|saham pilot|periode harga|sesi terakhir|keterbatasan)/i', $lower);
+        return (bool) preg_match('/(akumulasi|mengakumulasi|distribusi|mendistribusi|bandarmologi|broker|siapa yang beli|siapa yang jual|siapa saja yang|top buyer|top seller|aliran dana broker)/i', $lower);
     }
 
     /**
@@ -1061,6 +1234,60 @@ class TelegramTwoWayService
         $lower = strtolower($text);
 
         return (bool) preg_match('/(analisis|analisa|valuasi|murah|mahal|diskon|worth it|layak|prospek|risiko|fundamental|kinerja|laporan|keterbukaan|filing|divestasi|gross margin|beban bunga|akumulasi|mengakumulasi|distribusi|mendistribusi|bandarmologi|broker|siapa yang beli|siapa yang jual|top buyer|top seller|cocok|menilai|\bbeli\b|\bjual\b|entry|exit|cut loss|tp|target harga|crash|anjlok|rekomendasi|rekomandasi|saran|pandangan|pendapat|potensi|modal|\b\d+k\b|\bjuta\b|\brp\b)/i', $lower);
+    }
+
+    /**
+     * Format clean response for intraday scalping screening requests with transparent limitations.
+     */
+    protected function formatIntradayScalpingScreeningResponse(string $text, array &$provenance): string
+    {
+        $nowWib = Carbon::now('Asia/Jakarta')->format('d M Y, H:i').' WIB';
+
+        // 1. Ambil tanggal bar EOD valid terakhir dari database
+        $latestEodDate = MarketObservation::where('source', 'IDX Edge PRO')
+            ->where('board_scope', 'RG')
+            ->where('validation_status', 'VALID')
+            ->whereNotIn('ticker', ['^JKSE', 'JKSE', 'IHSG'])
+            ->max('bar_date');
+        $eodDateStr = $latestEodDate ? Carbon::parse($latestEodDate)->format('d M Y') : 'Sesi Terakhir';
+
+        // 2. Ambil top 3 kandidat likuiditas & volatilitas teratur dari EOD terakhir sebagai daftar pantau (distinct per ticker, mode adjusted)
+        $candidates = MarketObservation::where('source', 'IDX Edge PRO')
+            ->where('board_scope', 'RG')
+            ->where('adjustment_mode', 'PROVIDER_BACK_ADJUSTED')
+            ->where('bar_date', $latestEodDate)
+            ->where('validation_status', 'VALID')
+            ->whereNotIn('ticker', ['^JKSE', 'JKSE', 'IHSG'])
+            ->where('volume', '>=', 10_000_000)
+            ->where('close_price', '>=', 100)
+            ->orderByDesc('volume')
+            ->take(3)
+            ->get();
+
+        $lines = [
+            'SKRINING INTRADAY / SCALPING — KETERBATASAN DATA RUNTIME',
+            '──────────────────────────────────────────',
+            "• Waktu Permintaan : {$nowWib}",
+            '• Status Data Live : QUARANTINED (Endpoint quote intraday /api/price mencampur Pasar Negosiasi tanpa pemisah board)',
+            '• Keterbatasan API : IDX Edge tidak menyediakan live order book (bid/ask depth), running trade real-time RG, maupun sub-daily candle (menit)',
+            '• Kebijakan Audit  : Sistem menolak mengarang spread, order flow live, atau sinyal scalping presisi tanpa data tick resmi.',
+            '──────────────────────────────────────────',
+            "DAFTAR PANTAU LIKUIDITAS TINGGI (Acuan EOD: {$eodDateStr})",
+            'Dapat dipantau di RTI / Online Trading sekuritas Anda untuk konfirmasi harga live:',
+        ];
+
+        foreach ($candidates as $idx => $c) {
+            $num = $idx + 1;
+            $volJuta = round($c->volume / 1_000_000, 1);
+            $lines[] = "{$num}. {$c->ticker} — Penutupan EOD Rp ".number_format($c->close_price, 0, ',', '.')." (Vol: {$volJuta}M lembar)";
+            $lines[] = '   • Rentang EOD : Low Rp '.number_format($c->low_price, 0, ',', '.').' - High Rp '.number_format($c->high_price, 0, ',', '.');
+            $lines[] = '   • Syarat Masuk : Wajib verifikasi bid/ask, volume breakout, dan transaksi Pasar Reguler berjalan di platform broker Anda.';
+        }
+
+        $lines[] = '──────────────────────────────────────────';
+        $lines[] = 'PERINGATAN: Data di atas adalah historis penutupan EOD Pasar Reguler, BUKAN konfirmasi scalping hari ini.';
+
+        return implode("\n", $lines);
     }
 
     /**
@@ -1076,7 +1303,11 @@ class TelegramTwoWayService
         $provenance['analysis_mode'] = $mode;
 
         if ($mode === 'DAY_TRADE') {
-            return 'INTRADAY_DATA_UNAVAILABLE — Data intraday dengan latensi terverifikasi belum tersedia. Bar EOD dan prediksi 5 hari tidak dapat dipakai untuk day trading.';
+            return "ANALISIS INTRADAY / DAY TRADE TIDAK TERSEDIA\n"
+                ."──────────────────────────────────────────\n"
+                ."• Status Data Intraday: QUARANTINED (Endpoint quote mencampur Pasar Negosiasi tanpa filter board)\n"
+                ."• Keterbatasan Teknis: Data tick, bid/ask spread, order book depth, dan running trade live RG belum didukung provider\n"
+                .'• Batasan Integritas : Bar EOD dan horizon 5-hari tidak dapat dipakai untuk eksekusi day trade/scalping.';
         }
         if ($mode === 'INVESTMENT') {
             return 'INVESTMENT_EVIDENCE_UNAVAILABLE — Laporan keuangan, aksi korporasi, dan tesis usaha bertanggal belum tersedia untuk analisis investasi tervalidasi. Prediksi 5 hari tidak berlaku untuk investasi jangka panjang.';
@@ -1136,8 +1367,8 @@ class TelegramTwoWayService
         if ($latestObs && $latestObs->validation_status === 'CONFLICTED') {
             return "CONFLICTED — Data harga {$ticker} bertentangan antarsumber. Harga tidak ditampilkan sebelum audit sumber selesai.";
         }
-        if ($latestObs && (! $latestObs->is_eod_final || $latestObs->validation_status !== 'VALID')) {
-            return "DATA_NOT_VALIDATED — Bar {$ticker} belum tervalidasi final. Analisis EOD tidak diterbitkan.";
+        if ($latestObs && $latestObs->validation_status !== 'VALID') {
+            return "DATA_NOT_VALIDATED — Bar {$ticker} tidak valid ({$latestObs->validation_status}). Analisis EOD tidak diterbitkan.";
         }
 
         // If not in DB: use IDX Edge controlled sync instead of Yahoo!
@@ -1154,7 +1385,9 @@ class TelegramTwoWayService
 
         // Query PredictionSignal
         $latestSig = PredictionSignal::where('ticker', $ticker)->latest('decision_date')->first();
+        $latestMetric = CompanyAnalysisMetric::where('ticker', $ticker)->latest('as_of_date')->first();
         // Query NewsItem
+        // Support/resistance comes from technical engine, not ML output.
         $latestNews = NewsItem::where(function ($q) use ($ticker) {
             $q->where('related_tickers', 'like', "%{$ticker}%")
                 ->orWhere('title', 'like', "%{$ticker}%");
@@ -1167,7 +1400,9 @@ class TelegramTwoWayService
         $lines[] = '──────────────────────────────────────────';
         $lines[] = "• Instrumen       : {$ticker} ({$companyName})";
         $lines[] = '• Observation ID: '.$latestObs->id;
-        $lines[] = '• Freshness: '.$marketRead->state($latestObs, app(BeiCalendarService::class)->getCurrentTradingDay(Carbon::now('Asia/Jakarta'))->toDateString());
+        $expectedDate = app(BeiCalendarService::class)->getCurrentTradingDay(Carbon::now('Asia/Jakarta'))->toDateString();
+        $lines[] = '• Freshness: '.$marketRead->freshness($latestObs, $expectedDate);
+        $lines[] = '• Finality: '.$marketRead->finality($latestObs);
         $lines[] = '• Klasifikasi: '.$latestObs->data_classification.' / '.$latestObs->interval;
         $fetchedStr = 'DATA_NOT_AVAILABLE';
         if ($latestObs->fetched_at) {
@@ -1231,13 +1466,22 @@ class TelegramTwoWayService
                 $lines[] = '• Rentang Harga High-Low: Rp '.number_format($priceRange, 2, ',', '.')." ({$rangePct}% rentang bar diukur terhadap batas Low bar)";
             }
             $lines[] = '• Catatan Metrik        : Dihitung murni dari bar OHLC tersimpan (rentang bar terhadap Low, bukan bid-ask spread).';
+            if ($latestMetric) {
+                $flags = $latestMetric->data_quality_flags ?? [];
+                $lines[] = '• Support/Resistance   : Rp '.number_format((float) $latestMetric->support_price, 2, ',', '.').' / Rp '.number_format((float) $latestMetric->resistance_price, 2, ',', '.');
+                $lines[] = '  Metode/window        : '.($flags['support_resistance_method'] ?? 'rolling_min_max').' / '.($flags['support_resistance_window_bars'] ?? 20).' bar';
+                $lines[] = '  Timeframe/as-of      : '.($flags['interval'] ?? '1d').' / '.($latestMetric->as_of_date?->format('Y-m-d') ?? 'N/A');
+                $lines[] = '  Sumber/adjustment    : '.($flags['source'] ?? 'IDX Edge PRO').' / '.($flags['adjustment_mode'] ?? 'N/A');
+            } else {
+                $lines[] = '• Support/Resistance   : N/A (indikator engine belum tersedia)';
+            }
         } else {
             $lines[] = '• Data Pasar      : Belum ada observasi harga tersimpan di database.';
         }
 
         $lines[] = '';
         $lines[] = 'STATUS MODEL & PREDIKSI';
-        $isValidatedUniverse = array_key_exists($ticker, BeiUniverseRegistry::VALIDATED_ML_UNIVERSE);
+        $isValidatedUniverse = BeiUniverseRegistry::hasProductionMlInference($ticker);
 
         if ($isValidatedUniverse) {
             if ($latestSig) {
@@ -1283,7 +1527,7 @@ class TelegramTwoWayService
             $lines[] = "• Sumber  : {$latestNews->source_name} ({$newsDate})";
             $lines[] = '• Ringkas : '.($latestNews->summary ?: 'Tidak ada ringkasan.');
         } else {
-            $lines[] = '• Berita  : Tidak ada berita tersimpan untuk emiten ini dalam 7 hari terakhir.';
+            $lines[] = '• Berita  : NOT_FETCHED_OR_UNKNOWN — sumber berita terautentikasi belum terbukti tersedia; bukan bukti berita tidak ada.';
         }
 
         // On-demand AI Narrative Explanation: Only execute if sync/test requested, or if already cached

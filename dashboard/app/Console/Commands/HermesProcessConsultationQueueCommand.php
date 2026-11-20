@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 
 class HermesProcessConsultationQueueCommand extends Command
 {
-    protected $signature = 'hermes:process-consultation-queue {--limit=5 : Maximum number of consultation jobs to process} {--mock : Run in mock mode without live Telegram delivery} {--live : Execute real Telegram delivery via Hermes CLI}';
+    protected $signature = 'hermes:process-consultation-queue {--limit=5 : Maximum number of consultation jobs to process} {--job-id= : Process only this pending consultation job} {--mock : Run in mock mode without live Telegram delivery} {--live : Execute real Telegram delivery via Hermes CLI}';
 
     protected $description = 'Dedicated fast-track worker for asynchronous AI consultation jobs';
 
@@ -20,6 +20,13 @@ class HermesProcessConsultationQueueCommand extends Command
         $isLive = $this->option('live');
         $mockOnly = ! $isLive;
         $limit = (int) ($this->option('limit') ?: 5);
+        $jobId = $this->option('job-id');
+
+        if ($jobId !== null && (! ctype_digit((string) $jobId) || (int) $jobId < 1)) {
+            $this->error('job-id must be a positive integer.');
+
+            return self::FAILURE;
+        }
 
         // 1. Reclaim stale leases if worker is confirmed DEAD
         $staleCandidates = ScheduledTelegramJob::where('status', 'PROCESSING')
@@ -42,8 +49,9 @@ class HermesProcessConsultationQueueCommand extends Command
         $jobs = ScheduledTelegramJob::where('status', 'PENDING')
             ->where('request_type', 'ASYNC_CONSULTATION')
             ->where('scheduled_at', '<=', now())
+            ->when($jobId !== null, fn ($query) => $query->whereKey((int) $jobId))
             ->orderBy('scheduled_at', 'asc')
-            ->limit($limit)
+            ->limit($jobId !== null ? 1 : $limit)
             ->get();
 
         if ($jobs->isEmpty()) {

@@ -28,6 +28,10 @@ class TechnicalMetricsSufficiencyTest extends TestCase
                 'close_price' => 1020 + ($i * 10),
                 'volume' => 1000000,
                 'source' => 'IDX Edge PRO',
+                'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+                'interval' => '1d',
+                'data_classification' => 'PUBLIC_MARKET_EOD',
+                'board_scope' => 'RG',
                 'validation_status' => 'VALID',
                 'is_eod_final' => true,
             ]);
@@ -107,6 +111,19 @@ class TechnicalMetricsSufficiencyTest extends TestCase
         $this->assertNotNull($res->rsi_14);
         $this->assertGreaterThanOrEqual(0.0, $res->rsi_14);
         $this->assertLessThanOrEqual(100.0, $res->rsi_14);
+    }
+
+    public function test_metric_as_of_date_never_exceeds_latest_adjusted_input_bar(): void
+    {
+        $this->createBars('BSTALE', 25, '2026-11-13');
+        $service = app(TechnicalMetricsCalculationService::class);
+
+        $res = $service->calculateForTicker('BSTALE', '2026-11-16');
+
+        $this->assertNotNull($res);
+        $this->assertSame('2026-11-13', $res->as_of_date->toDateString());
+        $this->assertSame('2026-11-13', $res->data_quality_flags['last_date']);
+        $this->assertSame('2026-11-13', $res->data_quality_flags['as_of_date']);
     }
 
     public function test_price_fraction_resolution_for_different_boards_and_price_levels(): void

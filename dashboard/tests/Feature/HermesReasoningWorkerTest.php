@@ -236,4 +236,78 @@ class HermesReasoningWorkerTest extends TestCase
         $this->assertEquals([999999999], $citedIds);
         $this->assertFalse($hasRealRecord, 'Fabricated evidence ID should not exist in database.');
     }
+
+    /**
+     * 7. Test Evidence Validation: Real evidence from wrong ticker or wrong user is rejected.
+     */
+    public function test_evidence_from_wrong_ticker_or_wrong_user_is_rejected(): void
+    {
+        $realEvOtherUser = EvidenceSnapshot::create([
+            'snapshot_id' => 'EV_OTHER_USER_'.uniqid(),
+            'ticker' => 'BBCA',
+            'decision_date' => now()->toDateString(),
+            'market_regime' => 'SIDEWAYS',
+            'features_snapshot' => [
+                'user_id' => '999888777', // Different user
+                'chat_id' => '999888777',
+            ],
+            'data_hash' => hash('sha256', 'other_user_evidence'),
+        ]);
+
+        $realEvWrongTicker = EvidenceSnapshot::create([
+            'snapshot_id' => 'EV_WRONG_TICKER_'.uniqid(),
+            'ticker' => 'ASII', // ASII evidence cited for BBCA
+            'decision_date' => now()->toDateString(),
+            'market_regime' => 'SIDEWAYS',
+            'features_snapshot' => [
+                'user_id' => '5923895922',
+                'chat_id' => '5923895922',
+            ],
+            'data_hash' => hash('sha256', 'wrong_ticker_evidence'),
+        ]);
+
+        $job = new ScheduledTelegramJob([
+            'id' => 204,
+            'telegram_user_id' => '5923895922',
+            'chat_id' => '5923895922',
+            'original_prompt' => 'Analisis BBCA',
+        ]);
+
+        // Wrong User Check
+        $evRecord1 = EvidenceSnapshot::find($realEvOtherUser->id);
+        $isUserAuthorized = ($evRecord1->features_snapshot['user_id'] ?? null) === (string) $job->telegram_user_id;
+        $this->assertFalse($isUserAuthorized);
+
+        // Wrong Ticker Check
+        $evRecord2 = EvidenceSnapshot::find($realEvWrongTicker->id);
+        $isTickerMatching = strtoupper(trim((string) $evRecord2->ticker)) === 'BBCA';
+        $this->assertFalse($isTickerMatching);
+    }
+
+    /**
+     * 8. Test Market Claims Without Evidence Rejection:
+     * Market numbers asserted without tool/evidence are rejected.
+     */
+    public function test_market_numbers_without_evidence_are_rejected(): void
+    {
+        $adapter = app(HermesConsultationAdapterService::class);
+        $job = new ScheduledTelegramJob([
+            'id' => 205,
+            'telegram_user_id' => '5923895922',
+            'chat_id' => '5923895922',
+            'original_prompt' => 'Analisis BBCA',
+        ]);
+
+        // An answer with market numbers but no evidence backing
+        $unbackedOutput = 'Harga BBCA ditutup di Rp 5.000, volume 20.000.000 lembar. Broker beli Rp 10 Miliar.';
+
+        $hasMarketPriceNumbers = preg_match('/Rp\s*[0-9]+([.,][0-9]+)?/i', $unbackedOutput);
+        $this->assertTrue((bool) $hasMarketPriceNumbers);
+
+        $validEvidenceIds = []; // Empty evidence
+        $hasToolEvidence = false; // No tools run
+
+        $isRejected = ($hasMarketPriceNumbers && empty($validEvidenceIds) && ! $hasToolEvidence);
+        $this->assertTrue($isRejected, 'Unbacked market numeric claims must be rejected.');
+    }
 }

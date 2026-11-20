@@ -27,7 +27,7 @@ class DataSourceRegistryTest extends TestCase
 
         $this->assertSame($count1, $count2);
         $this->assertSame(0, $res2['created']);
-        $this->assertSame(7, $count1);
+        $this->assertSame(16, $count1);
     }
 
     public function test_registry_contains_proper_status_separation(): void
@@ -41,11 +41,11 @@ class DataSourceRegistryTest extends TestCase
         $this->assertSame('VALID', $history->data_quality);
         $this->assertSame('/api/history/{code}', $history->endpoint);
 
-        $quote = DataSource::where('name', 'IDX Edge Quote Intraday')->first();
+        $quote = DataSource::where('name', 'IDX Edge Quote Intraday (MIXED_BOARD_UNSEPARABLE)')->first();
         $this->assertNotNull($quote);
         $this->assertSame('quarantined', $quote->status);
         $this->assertFalse($quote->is_enabled);
-        $this->assertSame('QUARANTINED', $quote->data_quality);
+        $this->assertSame('MIXED_BOARD_UNSEPARABLE', $quote->data_quality);
         $this->assertNotNull($quote->quarantine_reason);
 
         $broker = DataSource::where('name', 'IDX Edge Broker Summary')->first();
@@ -60,17 +60,35 @@ class DataSourceRegistryTest extends TestCase
         $this->assertTrue($fundamental->is_enabled);
         $this->assertSame('VERIFIED_ON_SAMPLE', $fundamental->data_quality);
 
-        $yahoo = DataSource::where('name', 'Yahoo Finance Daily EOD')->first();
+        $yahoo = DataSource::where('name', 'Yahoo Finance Daily EOD (Arsip Historis)')->first();
         $this->assertNotNull($yahoo);
-        $this->assertSame('active', $yahoo->status);
-        $this->assertTrue($yahoo->is_enabled);
-        $this->assertSame('VALID', $yahoo->data_quality);
+        $this->assertSame('inactive', $yahoo->status);
+        $this->assertFalse($yahoo->is_enabled);
+        $this->assertSame('HISTORICAL_ARCHIVE_ONLY', $yahoo->data_quality);
 
         $indexAlpha = DataSource::where('name', 'Index Alpha Broker Summary')->first();
         $this->assertNotNull($indexAlpha);
         $this->assertSame('inactive', $indexAlpha->status);
         $this->assertFalse($indexAlpha->is_enabled);
         $this->assertSame('DEPRECATED', $indexAlpha->data_quality);
+    }
+
+    public function test_registry_exposes_validated_capabilities_with_separate_board_contracts(): void
+    {
+        $registry = app(DataSourceRegistryService::class);
+        $registry->syncRegistry();
+
+        $this->assertTrue($registry->isEndpointEnabled('price_ihsg'));
+        $this->assertTrue($registry->isEndpointEnabled('movers'));
+        $this->assertFalse($registry->isEndpointEnabled('insiders'));
+        $this->assertFalse($registry->isEndpointEnabled('chart'));
+        $this->assertFalse($registry->isEndpointEnabled('price'));
+
+        $ihsg = DataSource::where('name', 'IDX Edge Harga IHSG')->firstOrFail();
+        $movers = DataSource::where('name', 'IDX Edge Movers Harian')->firstOrFail();
+        $this->assertSame('INDEX', $ihsg->metadata['board_scope']);
+        $this->assertSame('UNVERIFIED', $movers->metadata['board_scope']);
+        $this->assertSame('SCHEMA_VALIDATED_ON_SAMPLE', $movers->data_quality);
     }
 
     public function test_registry_never_stores_api_key_or_secrets(): void
@@ -96,11 +114,12 @@ class DataSourceRegistryTest extends TestCase
             'low_price' => 4900,
             'close_price' => 4980,
             'volume' => 100000,
-            'source' => 'Yahoo Finance (via yfinance)',
+            'source' => 'IDX Edge PRO',
             'interval' => '1d',
             'data_classification' => 'PUBLIC_MARKET_EOD',
             'is_eod_final' => true,
             'validation_status' => 'VALID',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
         ]);
 
         // 2. Newer observation marked CONFLICTED (e.g. negotiated crossing anomaly)
@@ -127,7 +146,7 @@ class DataSourceRegistryTest extends TestCase
         // Conflicted must be strictly excluded; valid Yahoo fallback must be returned
         $this->assertNotNull($selected);
         $this->assertSame($yahoo->id, $selected->id);
-        $this->assertSame('Yahoo Finance (via yfinance)', $selected->source);
+        $this->assertSame('IDX Edge PRO', $selected->source);
         $this->assertSame(4980.0, (float) $selected->close_price);
     }
 
@@ -138,9 +157,9 @@ class DataSourceRegistryTest extends TestCase
         $response = $this->get('/settings');
         $response->assertStatus(200);
         $response->assertSee('IDX Edge Histori EOD Reguler');
-        $response->assertSee('IDX Edge Quote Intraday');
-        $response->assertSee('DIKARANTINA');
-        $response->assertSee('Pasar Negosiasi (NG)');
+        $response->assertSee('IDX Edge Quote Intraday (MIXED_BOARD_UNSEPARABLE)');
+        $response->assertSee('MIXED_BOARD_UNSEPARABLE');
+        $response->assertSee('Dikeluarkan dari seluruh jalur sinyal dan harga RG.');
     }
 
     public function test_effective_status_correctly_blocks_unauthorized_or_quarantined_endpoints(): void
@@ -149,7 +168,7 @@ class DataSourceRegistryTest extends TestCase
         $registry->syncRegistry();
 
         // 1. Quarantined quote endpoint
-        $quoteSource = DataSource::where('name', 'IDX Edge Quote Intraday')->firstOrFail();
+        $quoteSource = DataSource::where('name', 'IDX Edge Quote Intraday (MIXED_BOARD_UNSEPARABLE)')->firstOrFail();
         $quoteStatus = $registry->getEffectiveStatus($quoteSource);
         $this->assertFalse($quoteStatus['effective_enabled']);
         $this->assertSame('QUARANTINED', $quoteStatus['badge']);

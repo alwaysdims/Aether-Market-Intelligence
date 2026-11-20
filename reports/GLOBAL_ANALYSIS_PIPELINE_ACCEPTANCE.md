@@ -162,12 +162,19 @@ Pada pengujian canary langsung untuk kueri emiten `BULL`, pengguna sempat meneri
    - Menghapus flag `-c` dan `--create-if-missing` pada runner satu-kali (`--oneshot`).
    - Setiap job menerima briefing kontekstual lengkap secara mandiri melalui berkas input tanpa membuat sesi dummy kosong di basis data sesi CLI.
    - Menambahkan batas iterasi `--max-turns 15` untuk memberi ruang penalaran multi-tool yang stabil.
-5. **Penyesuaian Validator Sesuai `request_kind` & Verifikasi Evidence Otoritatif**:
-   - Menghapus aturan pukul-rata (panjang >= 80 char atau kewajiban Day Trade/Swing).
-   - Klasifikasi dinamis `request_kind`: `EDUCATION`, `DATA_PROVENANCE_INQUIRY`, `SYSTEM_STATUS`, `SCREENING`, `BROKER_FLOW`, `COMPARISON`, `FOLLOW_UP_CLARIFICATION`, `COMPREHENSIVE_ANALYSIS`.
-   - Jawaban pendek yang tepat (misal edukasi RSI atau sumber data IDX Edge) lulus validasi.
-   - Verifikasi ketat seluruh Evidence ID yang dikutip: wajib ada di basis data PostgreSQL riil dan relevan. Mengutip Evidence ID fiktif langsung ditolak (`FAILED` terkontrol).
-   - Riwayat percakapan sebelumnya diprioritaskan via referensi `reply_to_message_id`/`analysis_id` dan disaring sebelum pesan/attempt saat ini untuk mencegah injeksi diri sendiri.
+7. **Penyelidikan Insiden Job #29 & Resolusi Hirarki Konteks Emiten**:
+   - **Akar Masalah Ganda**:
+     1. *Salah Identifikasi Ticker*: Regex fallback menangkap kata generic "TEKNIKAL" dari frasa "analisis teknikalnya" karena pola `(?:analisis|analisa)\s+([A-Za-z0-9^]{2,8})` belum menyaring kata teknis dan belum menegakkan resolusi instrumen terdaftar.
+     2. *Kegagalan Subprocess Adapter*: Query `TelegramConversation` menggunakan klausa `inbound_message_id != ...` padahal skema migrasi tabel `telegram_conversations` tidak memiliki kolom `inbound_message_id` (hanya tersimpan di JSONB `provenance`).
+   - **Perbaikan Generik**:
+     * Resolusi instrumen ditegakkan berjenjang: Ticker eksplisit -> Referensi `reply_to` -> Ticker unik terakhir dari percakapan pengguna -> Tanyakan klarifikasi jika ambigu lintas emiten. Kata biasa ("TEKNIKAL", "FUNDAMENTAL", "KESIMPULAN") diblokir dari inferensi ticker.
+     * Briefing input menyematkan kalkulasi deterministik Support (Rolling 20 Bar Low) & Resistance (Rolling 20 Bar High) dari `TechnicalMetricsCalculationService`.
+     * Penegakan aturan `DAY_TRADE_NOT_ASSESSABLE_WITH_AVAILABLE_DATA` selama feed intraday RG berstatus `QUARANTINED`.
+   - **Pemulihan Idempoten Job #29**:
+     * Job #29 dipulihkan dengan parameter ticker ter-resolve (`BULL`).
+     * Diproses otomatis oleh worker background (Task Scheduler OS): Outbox ID #63 terbit dan berhasil terkirim ke Telegram sebagai Pesan ID `543` (memuat kesimpulan teknikal, support Rp 228 / resistance Rp 378, broker summary, dan penolakan entry day trade berbasis EOD).
+
+
 
 
 

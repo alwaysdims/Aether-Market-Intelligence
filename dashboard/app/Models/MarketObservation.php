@@ -23,4 +23,12 @@ class MarketObservation extends Model
         'fetched_at' => 'datetime',
         'available_at' => 'datetime',
     ];
+
+    /**
+     * Scope query to Regular Board (RG) or Index for benchmark.
+     */
+    public function scopeRegularBoard($query)
+    {
+        return $query->whereIn('board_scope', ['RG', 'INDEX']);
+    }
 }

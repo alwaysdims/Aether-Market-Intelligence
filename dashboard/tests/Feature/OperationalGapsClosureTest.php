@@ -58,9 +58,10 @@ class OperationalGapsClosureTest extends TestCase
             ->first();
 
         $this->assertNotNull($outbox);
-        $this->assertStringContainsString('BRIEFING PAGI PASAR BEI', $outbox->payload_text);
-        $this->assertStringContainsString('BBCA: Rp 4.940', $outbox->payload_text);
-        $this->assertStringContainsString('Quote Intraday (09:15, 12:15, 15:15): DINONAKTIFKAN (QUARANTINED)', $outbox->payload_text);
+        $this->assertStringContainsString('TRADING PLAN — PRA-PASAR (08:30 WIB)', $outbox->payload_text);
+        $this->assertStringContainsString('Universe Diperiksa: 0 emiten | Data EOD Fresh H-1: 0 emiten', $outbox->payload_text);
+        $this->assertStringNotContainsString('BBCA: Rp 4.940', $outbox->payload_text);
+        $this->assertStringContainsString('STATUS: NO_SETUP_FOUND', $outbox->payload_text);
     }
 
     public function test_evening_review_includes_broker_observed_snapshot_with_disclaimer(): void

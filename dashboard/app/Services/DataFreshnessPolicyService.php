@@ -18,14 +18,14 @@ class DataFreshnessPolicyService
      */
     public const POLICIES = [
         'eod_market_data' => [
-            'provider' => 'Yahoo Finance (yfinance)',
+            'provider' => 'IDX Edge PRO (Pasar Reguler)',
             'publication_schedule' => 'Setiap hari bursa pukul 16:00 WIB',
-            'delay_minutes' => 15,
+            'delay_minutes' => 0,
             'max_acceptable_delay_days' => 1, // Skip non-trading days
-            'cost_tier' => 'Rp0 / Public',
+            'cost_tier' => 'Rp0 / Included',
         ],
         'intraday_delayed' => [
-            'provider' => 'Yahoo Finance (yfinance)',
+            'provider' => 'IDX Edge PRO (QUARANTINED)',
             'publication_schedule' => 'Sesi bursa reguler (09:00 - 16:00 WIB)',
             'delay_minutes' => 15,
             'max_acceptable_delay_minutes' => 30,
@@ -74,8 +74,22 @@ class DataFreshnessPolicyService
             $expectedEodDate = $this->calendar->getCurrentTradingDay($now->copy()->subDay())->startOfDay();
         }
 
-        // 1. Check MarketObservation in DB
+        // 1. Check MarketObservation in DB. Preserve canonical conflicts for audit state.
         $latestObs = app(CanonicalMarketReadService::class)->latest($ticker);
+        $conflictedObs = MarketObservation::query()
+            ->where('ticker', strtoupper(trim($ticker)))
+            ->where('source', 'IDX Edge PRO')
+            ->where('board_scope', 'RG')
+            ->where('interval', '1d')
+            ->where('data_classification', 'PUBLIC_MARKET_EOD')
+            ->where('adjustment_mode', 'PROVIDER_BACK_ADJUSTED')
+            ->where('validation_status', 'CONFLICTED')
+            ->orderByDesc('bar_date')
+            ->orderByDesc('id')
+            ->first();
+        if ($conflictedObs) {
+            $latestObs = $conflictedObs;
+        }
 
         // 2. Check News in DB
         $recentNewsCount = NewsItem::where(function ($q) use ($ticker) {

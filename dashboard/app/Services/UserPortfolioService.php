@@ -35,8 +35,19 @@ class UserPortfolioService
      */
     public function calculatePortfolioMetrics(string $userId): array
     {
-        $portfolio = $this->getOrCreatePortfolio($userId);
-        $items = $portfolio->items()->get();
+        // AETHER_READONLY_METRICS_V1: defaults remain in memory; never save here.
+        $portfolio = UserPortfolio::where('user_id', $userId)->first();
+        if ($portfolio === null) {
+            $portfolio = new UserPortfolio([
+                'user_id' => $userId,
+                'chat_id' => $userId,
+                'cash_balance' => 0.00,
+                'target_trading_pct' => 50.00,
+                'target_investment_pct' => 50.00,
+                'risk_profile' => 'MODERATE',
+            ]);
+        }
+        $items = $portfolio->exists ? $portfolio->items()->get() : collect();
 
         $cash = (float) $portfolio->cash_balance;
         $totalMarketValue = 0.0;

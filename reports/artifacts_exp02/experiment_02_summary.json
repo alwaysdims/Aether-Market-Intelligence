@@ -1,0 +1,117 @@
+{
+  "experiment_id": "SWING_OHLCV_EXP_02",
+  "execution_date_utc": "2026-11-04T18:02:06.337308+00:00",
+  "dataset_hash": "0d6587ab20b3baca3b2e3dd16e4b96e2fc7a8c28e99c650c3eea1c63f553257b",
+  "prediction_artifact_hash": "1e428e543d5fb69619ad0b4b171e53fd109a2e41f918e42eca58917475fec32f",
+  "results": [
+    {
+      "name": "Ablation A (Full Universe Linear + Dynamic Hurdle)",
+      "test_samples": 93508,
+      "bal_acc": 0.42701074204162276,
+      "macro_f1": 0.4166626901556518,
+      "macro_auc": 0.6125761481916946,
+      "maj_bal_acc": 0.3333333333333333,
+      "mom_bal_acc": 0.3398299366985394,
+      "tau_up": 0.42,
+      "coverage_up": 0.029740770843136415,
+      "precision_up": 0.3239841783531104,
+      "trades_count": 2781,
+      "mean_gross_return": -0.008834642858492347,
+      "mean_net_return": -0.027341706447271547,
+      "win_rate": 0.3383674937072995,
+      "cm": [
+        [
+          22423,
+          5627,
+          11918
+        ],
+        [
+          7949,
+          3618,
+          10968
+        ],
+        [
+          9532,
+          4127,
+          17346
+        ]
+      ],
+      "bootstrap_ci_low": 0.07640731483288672,
+      "bootstrap_ci_high": 0.10738151853529333,
+      "bootstrap_p_fail": 0.0
+    },
+    {
+      "name": "Ablation B (Eligible Subset Linear + Dynamic Hurdle)",
+      "test_samples": 30395,
+      "bal_acc": 0.416002879266125,
+      "macro_f1": 0.4068238458647084,
+      "macro_auc": 0.6062785366951814,
+      "maj_bal_acc": 0.3333333333333333,
+      "mom_bal_acc": 0.3323256884136245,
+      "tau_up": 0.42,
+      "coverage_up": 0.05234413554860997,
+      "precision_up": 0.35135135135135137,
+      "trades_count": 1591,
+      "mean_gross_return": -0.008418903381357586,
+      "mean_net_return": -0.02356423656173398,
+      "win_rate": 0.37083595223130106,
+      "cm": [
+        [
+          3522,
+          2182,
+          4457
+        ],
+        [
+          1398,
+          1748,
+          5099
+        ],
+        [
+          1702,
+          2022,
+          8265
+        ]
+      ],
+      "bootstrap_ci_low": 0.06199294201629646,
+      "bootstrap_ci_high": 0.09844986674633696,
+      "bootstrap_p_fail": 0.0
+    },
+    {
+      "name": "Ablation C (Eligible Subset HistGradientBoosting + Dynamic Hurdle)",
+      "test_samples": 30395,
+      "bal_acc": 0.416167582077698,
+      "macro_f1": 0.4153641038555505,
+      "macro_auc": 0.6109649157182089,
+      "maj_bal_acc": 0.3333333333333333,
+      "mom_bal_acc": 0.3323256884136245,
+      "tau_up": 0.42,
+      "coverage_up": 0.1950320776443494,
+      "precision_up": 0.3292847503373819,
+      "trades_count": 5928,
+      "mean_gross_return": -0.012959321080540046,
+      "mean_net_return": -0.027267271006138436,
+      "win_rate": 0.3647098515519568,
+      "cm": [
+        [
+          4727,
+          2797,
+          2637
+        ],
+        [
+          1931,
+          3248,
+          3066
+        ],
+        [
+          2597,
+          4724,
+          4668
+        ]
+      ],
+      "bootstrap_ci_low": 0.06902581583348956,
+      "bootstrap_ci_high": 0.09713041716775128,
+      "bootstrap_p_fail": 0.0
+    }
+  ],
+  "duration_seconds": 58.48304343223572
+}

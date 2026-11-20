@@ -14,19 +14,50 @@ Schedule::command('hermes:morning-briefing')
     ->at('08:30')
     ->timezone('Asia/Jakarta')
     ->withoutOverlapping(10)
+    ->runInBackground()
     ->appendOutputTo(storage_path('logs/hermes_morning_briefing.log'));
+
+// Jadwal Pembaruan Pasar Sesi 1 (Senin - Jumat 09:15 WIB)
+Schedule::command('hermes:market-update 09:15')
+    ->weekdays()
+    ->at('09:15')
+    ->timezone('Asia/Jakarta')
+    ->withoutOverlapping(10)
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/hermes_market_update_0915.log'));
+
+// Jadwal Ulasan Jeda Sesi Pasar (Senin - Jumat 12:15 WIB)
+Schedule::command('hermes:market-update 12:15')
+    ->weekdays()
+    ->at('12:15')
+    ->timezone('Asia/Jakarta')
+    ->withoutOverlapping(10)
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/hermes_market_update_1215.log'));
+
+// Jadwal Radar Penutupan Bursa (Senin - Jumat 15:15 WIB)
+Schedule::command('hermes:market-update 15:15')
+    ->weekdays()
+    ->at('15:15')
+    ->timezone('Asia/Jakarta')
+    ->withoutOverlapping(10)
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/hermes_market_update_1515.log'));
 
 // Catatan Arsitektur: Pekerjaan EOD Komprehensif 16:05 WIB (forward_data_collector,
 // sync-eod, evaluate-horizon, monitor-market, sync-idx-edge-history, dan broker summary)
 // DIMILIKI SECARA EKSKLUSIF oleh Windows Task Scheduler \HermesMarketIntelligence_EOD
 // melalui scripts/run_eod_pipeline.bat. Tidak didaftarkan di sini untuk mencegah eksekusi ganda.
 
-// Jadwal Pemantauan Pasar & Rekonsiliasi Expiry Tengah Malam (Setiap Hari 00:05 WIB)
-Schedule::command('hermes:monitor-market')
-    ->dailyAt('00:05')
-    ->timezone('Asia/Jakarta')
-    ->withoutOverlapping(10)
-    ->appendOutputTo(storage_path('logs/hermes_monitoring.log'));
+// Monitoring owned exclusively by Windows Task Scheduler AetherMarketMonitoring_15min.
+// Keep command out of Laravel scheduler to prevent duplicate execution.
+
+// Worker dashboard research memakai owner dispatcher yang sama; tidak membuat proses kedua.
+Schedule::command('aether:process-research-queue --limit=2')
+    ->everyMinute()
+    ->withoutOverlapping(2)
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/aether_research_worker.log'));
 
 // Jadwal Dispatcher Antrean Outbox Telegram (Setiap 5 Menit 24/7)
 Schedule::command('hermes:process-outbox --live')
@@ -35,13 +66,6 @@ Schedule::command('hermes:process-outbox --live')
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/hermes_outbox.log'));
 
-// Jadwal Pemrosesan Antrean Riset On-Demand (Setiap Menit 24/7)
-Schedule::command('aether:process-research-queue --limit=5')
-    ->everyMinute()
-    ->withoutOverlapping(5)
-    ->runInBackground()
-    ->appendOutputTo(storage_path('logs/aether_research_queue.log'));
-
 // Worker Fast-Track Antrean Konsultasi Asinkron AI (Setiap Menit 24/7)
 Schedule::command('hermes:process-consultation-queue --live --limit=5')
     ->everyMinute()
@@ -49,25 +73,19 @@ Schedule::command('hermes:process-consultation-queue --live --limit=5')
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/hermes_consultation_worker.log'));
 
-// Jadwal Sinkronisasi Broker Summary Terkontrol (Senin - Jumat 20:00 WIB)
-Schedule::command('hermes:sync-idx-edge-broker BBCA')
-    ->weekdays()
-    ->at('20:00')
-    ->timezone('Asia/Jakarta')
-    ->withoutOverlapping(10)
-    ->appendOutputTo(storage_path('logs/hermes_broker_summary.log'));
-
-// Jadwal Rekap Pasar & Broker Summary Sore (Senin - Jumat 20:00 WIB)
+// Evening report reads candidate snapshots and owns only report/outbox publication.
 Schedule::command('hermes:evening-review')
     ->weekdays()
     ->at('20:00')
     ->timezone('Asia/Jakarta')
     ->withoutOverlapping(10)
+    ->runInBackground()
     ->appendOutputTo(storage_path('logs/hermes_evening_review.log'));
 
-// Jadwal Pembaruan Fundamental Terkontrol (Setiap Sabtu 08:00 WIB)
-Schedule::command('hermes:sync-idx-edge-fundamental BBCA --limit=2')
-    ->weeklyOn(6, '08:00')
-    ->timezone('Asia/Jakarta')
-    ->withoutOverlapping(15)
-    ->appendOutputTo(storage_path('logs/hermes_fundamental.log'));
+// Broker/fundamental provider writes stay under guarded writer ownership.
+// EOD/broker/fundamental ingestion has no Laravel owner. Windows guarded EOD owns it.
+
+// EOD refresh, retry, and universe backfill are owned exclusively by
+// Windows Task Scheduler \HermesMarketIntelligence_EOD through the guarded
+// scripts/run_guarded_eod.bat -> launch_ingestion_writer.php chain.
+// Do not register plain Artisan ingestion here: it can inherit legacy .env state.

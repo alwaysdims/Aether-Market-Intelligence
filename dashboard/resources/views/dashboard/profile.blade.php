@@ -1,5 +1,7 @@
 @extends('layouts.app')
 
+@php $readOnlyRecovery = getenv('DASHBOARD_CANDIDATE') === '1'; @endphp
+
 @section('page_title', 'Profil Analis & Identitas Sistem')
 
 @section('content')
@@ -75,6 +77,11 @@
                 </div>
             </div>
 
+            @if($readOnlyRecovery)
+                <div class="border-t border-amber-500/20 pt-4 text-xs text-amber-300 font-mono">
+                    Perubahan profil dan identitas dinonaktifkan selama mode pemulihan.
+                </div>
+            @else
             <!-- Profile Edit Form -->
             <form action="{{ route('dashboard.profile.update') }}" method="POST" class="border-t border-[#F5F1E8]/10 pt-4 space-y-3">
                 @csrf
@@ -106,6 +113,7 @@
                     Simpan Perubahan Profil
                 </button>
             </form>
+            @endif
         </div>
 
         <!-- Column 2 & 3: Brand Identity & Allocation Targets -->
@@ -134,6 +142,11 @@
                         <span class="text-[9px] font-mono text-[#F5F1E8]/50 mt-2">public/images/logo.png</span>
                     </div>
 
+                    @if($readOnlyRecovery)
+                        <div class="flex-1 rounded border border-amber-500/20 bg-amber-950/30 p-4 text-xs text-amber-300 font-mono">
+                            Perubahan logo dan identitas sistem terkunci pada runtime hanya-baca.
+                        </div>
+                    @else
                     <!-- Brand Form -->
                     <form action="{{ route('dashboard.brand.update') }}" method="POST" enctype="multipart/form-data" class="flex-1 space-y-3">
                         @csrf
@@ -159,6 +172,7 @@
                             </button>
                         </div>
                     </form>
+                    @endif
                 </div>
             </div>
 

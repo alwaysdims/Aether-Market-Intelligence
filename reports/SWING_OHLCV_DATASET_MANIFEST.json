@@ -1,0 +1,99 @@
+{
+    "manifest_version": "1.0.0-ohlcv-retrospective",
+    "created_at_utc": "2026-11-04T12:17:56+00:00",
+    "dataset_name": "Aether_IDX_Equities_Swing_OHLCV_Dataset",
+    "source": "IDX Edge PRO (Canonical Board RG)",
+    "universe_breakdown": {
+        "total_registries": 978,
+        "complete_tickers": 964,
+        "excluded_index": 1,
+        "short_listing": 1,
+        "incomplete_gaps": 6,
+        "failed_schema": 5,
+        "unsupported_share_class": 1
+    },
+    "sample_counts": {
+        "total_adjusted_raw_bars": 478311,
+        "total_eligible_samples": 359527
+    },
+    "exclusions": {
+        "WARMUP_MA50": 48200,
+        "ZERO_VOLUME": 51293,
+        "CORRUPT_PRICE": 0,
+        "FORWARD_TARGET_UNAVAILABLE_OR_IMMATURE": 6618,
+        "PURGED_AT_SPLIT_BOUNDARY": 12673
+    },
+    "class_distribution_overall": {
+        "UP": 119874,
+        "DOWN": 137909,
+        "NEUTRAL": 101744
+    },
+    "split_specifications": {
+        "TRAIN": {
+            "date_range": {
+                "start": "2024-09-25",
+                "end": "2025-10-31"
+            },
+            "tickers_count": 894,
+            "trading_dates_count": 207,
+            "samples_count": 171487,
+            "classes": {
+                "UP": 57428,
+                "DOWN": 60682,
+                "NEUTRAL": 53377
+            }
+        },
+        "VALIDATION": {
+            "date_range": {
+                "start": "2025-11-03",
+                "end": "2026-04-30"
+            },
+            "tickers_count": 876,
+            "trading_dates_count": 111,
+            "samples_count": 94510,
+            "classes": {
+                "UP": 32584,
+                "DOWN": 37424,
+                "NEUTRAL": 24502
+            }
+        },
+        "TEST": {
+            "date_range": {
+                "start": "2026-05-02",
+                "end": "2026-10-23"
+            },
+            "tickers_count": 868,
+            "trading_dates_count": 112,
+            "samples_count": 93530,
+            "classes": {
+                "UP": 29862,
+                "DOWN": 39803,
+                "NEUTRAL": 23865
+            }
+        },
+        "FORWARD_UNMATURED_BUFFER": {
+            "date_range": {
+                "start": "2026-10-26",
+                "end": "2026-11-04"
+            },
+            "purpose": "Holding buffer for immature T+5 labels; strictly excluded from model evaluation."
+        }
+    },
+    "label_specification": {
+        "target_type": "FIXED_PERCENTAGE_DIRECTIONAL",
+        "horizon": "5_TRADING_DAYS_CLOSE_TO_CLOSE",
+        "threshold": "\u00b11.50%",
+        "classes": [
+            "UP",
+            "DOWN",
+            "NEUTRAL"
+        ],
+        "formula": "ret = (Close_{t+5} - Close_t) / Close_t; UP if ret > 0.015, DOWN if ret < -0.015, else NEUTRAL"
+    },
+    "friction_costs_and_slippage": {
+        "broker_fee_round_trip": "0.40% (0.15% buy, 0.25% sell)",
+        "slippage_per_side": "1 tick entry, 1 tick exit (Total 2 ticks adverse slippage)",
+        "dynamic_cost_formula": "friction_cost(P) = 0.0040 + (2 * tick_size(P)) / P"
+    },
+    "manifest_sha256_hash": "ecf692f7cc6f8b4793fc13d41f74c3e0d21f60864c4bfb9c36bbe4cbd329abb3"
+}

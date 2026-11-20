@@ -355,10 +355,11 @@ class TelegramMarketAssistantService
                 if ($useHermes) {
                     $report = app(HermesConsultationAdapterService::class)->executeConsultation($job, $provenance);
                 } else {
+                    $provenance['is_async_job'] = true;
                     $reportText = app(AiConversationService::class)->handleConversation(
                         $job->original_prompt,
-                        $job->telegram_user_id,
                         $job->chat_id,
+                        $job->telegram_user_id,
                         null,
                         $provenance
                     );
@@ -456,7 +457,7 @@ class TelegramMarketAssistantService
                 }
 
                 $durationMs = (int) round((microtime(true) - $startTime) * 1000);
-                $latenessSeconds = ($lockedJob->scheduled_at && $sentAt) ? abs($sentAt->diffInSeconds($lockedJob->scheduled_at, false)) : 0;
+                $latenessSeconds = ($lockedJob->scheduled_at && $sentAt) ? (int) round(abs($sentAt->diffInSeconds($lockedJob->scheduled_at, false))) : 0;
 
                 $lockedJob->update([
                     'status' => $finalJobStatus,
@@ -480,27 +481,34 @@ class TelegramMarketAssistantService
                     'error_message' => $outbox->error_message,
                 ]);
 
-                // Also update corresponding TelegramConversation record if linked to preserve conversation history
+                // Preserve existing SENT payload; attach follow-up audit only in provenance.
                 if ($lockedJob->telegram_update_id) {
-                    TelegramConversation::updateOrCreate(
-                        ['telegram_update_id' => $lockedJob->telegram_update_id],
-                        [
+                    $conversation = TelegramConversation::where('telegram_update_id', $lockedJob->telegram_update_id)->first();
+                    $followUpProvenance = [
+                        'follow_up_job_id' => $lockedJob->id,
+                        'follow_up_outbox_id' => $outbox->id,
+                        'follow_up_analysis_id' => $report['analysis_id'] ?? null,
+                        'follow_up_evidence_id' => $report['evidence_id'] ?? null,
+                        'follow_up_outbound_message_id' => $outboundMsgId,
+                    ];
+                    if ($conversation) {
+                        $conversation->update([
+                            'provenance' => array_merge((array) $conversation->provenance, $followUpProvenance),
+                        ]);
+                    } else {
+                        TelegramConversation::create([
+                            'telegram_update_id' => $lockedJob->telegram_update_id,
                             'chat_id' => $lockedJob->chat_id,
                             'user_id' => $lockedJob->telegram_user_id,
                             'user_name' => 'User',
                             'inbound_text' => $lockedJob->original_prompt,
-                            'detected_intent' => 'GENERAL_CONVERSATION',
+                            'detected_intent' => 'QUERY_COMPREHENSIVE_ANALYSIS',
                             'context_signal_id' => null,
                             'outbound_reply_text' => $report['text'],
-                            'provenance' => [
-                                'job_id' => $lockedJob->id,
-                                'outbox_id' => $outbox->id,
-                                'analysis_id' => $report['analysis_id'] ?? null,
-                                'evidence_id' => $report['evidence_id'] ?? null,
-                            ],
+                            'provenance' => $followUpProvenance,
                             'response_time_ms' => $durationMs,
-                        ]
-                    );
+                        ]);
+                    }
                 }
 
                 return [

@@ -34,6 +34,8 @@ class CompanyFundamentalService
         // Avoid falling back to old Yahoo Finance python collector if provider is not available
         // Return existing DB state; operational pipeline strictly requires IDX Edge PRO
         $latestObs = MarketObservation::where('ticker', $ticker)
+            ->where('source', 'IDX Edge PRO')
+            ->where('validation_status', 'VALID')
             ->latest('bar_date')
             ->first();
 
@@ -156,24 +158,32 @@ class CompanyFundamentalService
         if ($m && $m->fundamental_status !== 'NO_DATA') {
             $sharesOut = $flags['shares_outstanding'] ?? $reg?->shares_outstanding;
             $weightedShares = $flags['weighted_average_shares'] ?? null;
-            $sharesOutStr = $sharesOut ? number_format($sharesOut, 0, ',', '.').' lembar' : 'N/A';
-            $weightedSharesStr = $weightedShares ? number_format($weightedShares, 0, ',', '.').' lembar' : 'N/A';
-            $lines[] = "• Saham Beredar   : Akhir Periode {$sharesOutStr} (Basis BVPS) | Rata-rata Tertimbang {$weightedSharesStr} (Basis EPS)";
+            $sharesDate = $reg?->snapshot_date ? $reg->snapshot_date->format('d M Y') : 'Akhir Periode';
+            $sharesOutStr = $sharesOut ? number_format($sharesOut, 0, ',', '.')." lembar (per {$sharesDate})" : 'N/A';
+            $weightedSharesStr = $weightedShares ? number_format($weightedShares, 0, ',', '.').' lembar' : 'Belum Terinci / N/A (Menggunakan EPS Dilaporkan)';
+            $lines[] = "• Saham Beredar   : Akhir Periode {$sharesOutStr} (Basis BVPS/Market Cap) | Rata-rata Tertimbang: {$weightedSharesStr} (Basis EPS Dasar)";
 
-            $epsSrc = $srcs['eps_source'] ?? 'CALCULATED_FROM_FINANCIALS';
-            $bvpsSrc = $srcs['bvps_source'] ?? 'CALCULATED_FROM_FINANCIALS';
-            $epsStr = $m->eps ? 'Rp '.number_format($m->eps, 2, ',', '.')." [{$epsSrc}]" : 'N/A';
-            $bvpsStr = $m->bvps ? 'Rp '.number_format($m->bvps, 2, ',', '.')." [{$bvpsSrc}]" : 'N/A';
+            $reportedEps = $flags['reported_basic_eps'] ?? $m->eps;
+            $epsBasis = $flags['eps_basis'] ?? 'REPORTED_INCOME_STATEMENT';
+            $epsPeriod = $flags['eps_fiscal_year'] ?? ($funds->first()?->fiscal_year ?? 'FY Terkini');
+            $epsStr = $reportedEps !== null ? 'Rp '.number_format($reportedEps, 2, ',', '.')." [Basis: {$epsBasis}, Periode: {$epsPeriod}]" : 'N/A';
+
+            $bvpsEquityAttr = $flags['bvps_equity_basis'] ?? 'TOTAL_PARENT_EQUITY';
+            $bvpsStr = $m->bvps ? 'Rp '.number_format($m->bvps, 2, ',', '.')." [Atribusi: {$bvpsEquityAttr}, Saham: {$sharesDate}]" : 'N/A';
             $lines[] = "• EPS / BVPS      : {$epsStr} / {$bvpsStr}";
 
-            $peSrc = $srcs['pe_source'] ?? 'CALCULATED_FROM_FINANCIALS';
+            // Valuation: PER & PBV
+            // Check if nominal price or back-adjusted price is used
+            $adjMode = $obs?->adjustment_mode ?? 'NOMINAL';
+            $peBasis = "P/E Sesi {$obs?->bar_date?->format('d M Y')} vs EPS {$epsPeriod} [Price: {$adjMode}]";
             $peStr = $m->pe_ratio !== null
-                ? "{$m->pe_ratio}x [{$peSrc}]"
-                : ((($flags['pe_metric_status'] ?? null) === 'NOT_APPLICABLE_NEGATIVE_EARNINGS' || ($m->eps !== null && $m->eps <= 0))
+                ? "{$m->pe_ratio}x [{$peBasis}]"
+                : ((($flags['pe_metric_status'] ?? null) === 'NOT_APPLICABLE_NEGATIVE_EARNINGS' || ($reportedEps !== null && $reportedEps <= 0))
                     ? 'N/A [NOT_APPLICABLE: Emiten Mencatat Rugi Bersih]'
                     : 'N/A');
-            $pbvSrc = $srcs['pbv_source'] ?? 'CALCULATED_FROM_FINANCIALS';
-            $pbvStr = $m->pbv_ratio !== null ? "{$m->pbv_ratio}x [{$pbvSrc}]" : 'N/A';
+
+            $pbvBasis = "P/B Sesi {$obs?->bar_date?->format('d M Y')} vs BVPS per {$sharesDate} [Price: {$adjMode}]";
+            $pbvStr = $m->pbv_ratio !== null ? "{$m->pbv_ratio}x [{$pbvBasis}]" : 'N/A';
             $lines[] = "• PER / PBV       : {$peStr} / {$pbvStr}";
 
             $roeStr = $m->roe_pct !== null ? "{$m->roe_pct}%" : 'N/A';
@@ -186,8 +196,8 @@ class CompanyFundamentalService
             $pureDerStr = $pureDer !== null ? " | DER Pinjaman Murni: {$pureDer}x" : '';
             $liabEqVal = $flags['liabilities_to_equity_ratio'] ?? null;
             $liabEqStr = $liabEqVal !== null ? "{$liabEqVal}x" : 'N/A';
-            $lines[] = "• Solvabilitas    : Rasio Total Liabilitas / Total Ekuitas: {$liabEqStr} | DER Utang Berbunga: {$derStr}{$pureDerStr}";
-            $lines[] = '  (Peringatan Akuntansi: Rasio total liabilitas terhadap ekuitas BUKAN rasio utang pinjaman berbunga/DER murni; mencakup seluruh kewajiban operasional, usaha, dan akrual).';
+            $lines[] = "• Solvabilitas    : Rasio Total Liabilitas / Total Ekuitas: {$liabEqStr} [Status: COMPUTED_FROM_PROVIDER_DATA, belum document-verified] | DER Utang Berbunga: {$derStr}{$pureDerStr}";
+            $lines[] = '  (Peringatan Akuntansi: Rasio total liabilitas terhadap total ekuitas berasal dari kalkulasi agregat penyedia data [COMPUTED_FROM_PROVIDER_DATA], bukan rasio utang pinjaman berbunga/DER murni, dan belum diverifikasi silang terhadap dokumen primer PDF/audited BEI).';
 
             $npmStr = $m->net_profit_margin_pct !== null ? "{$m->net_profit_margin_pct}%" : 'N/A';
             $lines[] = "• Net Margin      : {$npmStr}";

@@ -30,16 +30,32 @@ class AiMarketAnalysisService
 
     protected bool $onDemandEnabled;
 
+    protected string $provider;
+
+    protected string $googleBaseUrl;
+
+    protected int $maxRetries;
+
     public function __construct()
     {
-        $this->endpoint = rtrim(config('services.ai_router.endpoint', env('AI_ROUTER_ENDPOINT', 'http://127.0.0.1:20128/v1')), '/').'/chat/completions';
-        $this->modelId = config('services.ai_router.model_id', env('AI_MODEL_ID', 'ag/gemini-3.8-flash-high'));
-        $this->apiKey = config('services.ai_router.api_key', env('AI_API_KEY', ''));
-        $this->timeout = (int) config('services.ai_router.timeout', env('AI_ROUTER_TIMEOUT', 25));
-        $this->maxTokens = (int) config('services.ai_router.max_tokens', env('AI_ROUTER_MAX_TOKENS', 600));
-        $this->liveInferenceEnabled = (bool) config('services.ai_router.eod_inference_enabled', env('AI_LIVE_INFERENCE_EOD_ENABLED', false))
-            || (bool) config('services.ai_router.live_inference_enabled', env('AI_LIVE_INFERENCE_ENABLED', false));
-        $this->onDemandEnabled = (bool) config('services.ai_router.on_demand_enabled', env('AI_LIVE_INFERENCE_ON_DEMAND_ENABLED', true));
+        $this->provider = app()->runningUnitTests() ? (string) config('services.dashboard_ai.provider', 'google') : 'consultation_ai';
+        $this->googleBaseUrl = rtrim((string) config('services.dashboard_ai.base_url', 'https://generativelanguage.googleapis.com'), '/');
+        $this->modelId = app()->runningUnitTests()
+            ? (string) config('services.dashboard_ai.model', 'gemini-3.6-flash')
+            : (string) config('services.consultation_ai.model_id', 'gemini/gemini-3.6-flash');
+        $this->endpoint = $this->provider === 'google'
+            ? $this->googleBaseUrl.'/v1beta/models/'.rawurlencode($this->modelId).':generateContent'
+            : rtrim((string) config('services.consultation_ai.endpoint'), '/').'/chat/completions';
+        $this->apiKey = $this->provider === 'google'
+            ? config('services.dashboard_ai.api_key')
+            : (string) config('services.consultation_ai.api_key', '');
+        $this->timeout = (int) config('services.consultation_ai.timeout', config('services.dashboard_ai.timeout', 45));
+        $this->maxTokens = (int) config('services.dashboard_ai.max_output_tokens', 2500);
+        $this->maxRetries = max(0, (int) config('services.consultation_ai.max_retries', 1));
+        $this->liveInferenceEnabled = (bool) config('services.dashboard_ai.eod_inference_enabled', false);
+        // On-demand Gemini is independent from ML/EOD inference gates.
+        $this->onDemandEnabled = (bool) config('services.dashboard_ai.on_demand_enabled', false)
+            || (bool) config('services.ai_router.on_demand_enabled', true);
     }
 
     /**
@@ -76,72 +92,13 @@ class AiMarketAnalysisService
 
         $fullPrompt = str_replace('{market_summary}', $marketContext.$newsContext, $userTemplate);
 
-        $payload = [
-            'model' => $this->modelId,
-            'messages' => [
-                ['role' => 'system', 'content' => $systemPrompt],
-                ['role' => 'user', 'content' => $fullPrompt],
-            ],
-            'temperature' => 0.2,
-            'max_tokens' => $this->maxTokens,
-            'stream' => false,
-            'response_format' => ['type' => 'json_object'],
-        ];
-
-        $analysisData = null;
-        $validationStatus = 'valid_schema';
-        $fallbackReason = 'Ketiadaan respon router AI lokal';
-
-        try {
-            $req = Http::timeout($this->timeout);
-            if (! empty($this->apiKey)) {
-                $req = $req->withToken($this->apiKey);
-            }
-
-            $resp = $req->post($this->endpoint, $payload);
-
-            if ($resp->successful()) {
-                $choices = $resp->json('choices');
-                if (! is_array($choices) || empty($choices)) {
-                    $validationStatus = 'invalid_schema';
-                    $fallbackReason = 'Format respons AI tidak valid: struktur choices kosong atau tidak sesuai standar.';
-                } else {
-                    $finishReason = $choices[0]['finish_reason'] ?? 'stop';
-                    $rawContent = $choices[0]['message']['content'] ?? null;
-
-                    if ($finishReason === 'length') {
-                        $validationStatus = 'invalid_schema';
-                        $fallbackReason = 'Respons AI terpotong karena batas token habis (finish_reason = length).';
-                    } elseif ($rawContent === null || trim($rawContent) === '') {
-                        $validationStatus = 'invalid_schema';
-                        $fallbackReason = 'Konten respons AI kosong.';
-                    } else {
-                        $decoded = json_decode($rawContent, true);
-                        if (json_last_error() !== JSON_ERROR_NONE) {
-                            $validationStatus = 'invalid_schema';
-                            $fallbackReason = 'Gagal parsing JSON: '.json_last_error_msg();
-                        } elseif (! is_array($decoded) || empty($decoded['market_regime_summary']) || ! is_string($decoded['market_regime_summary'])) {
-                            $validationStatus = 'invalid_schema';
-                            $fallbackReason = 'Skema respons AI tidak valid: kunci market_regime_summary wajib berupa string non-kosong.';
-                        } else {
-                            $analysisData = $decoded;
-                            if ($resp->json('usage')) {
-                                $analysisData['_usage'] = $resp->json('usage');
-                            }
-                            $analysisData['_finish_reason'] = $finishReason;
-                        }
-                    }
-                }
-            } else {
-                $status = $resp->status();
-                Log::warning("AI Router error [{$status}]: ".$resp->body());
-                $validationStatus = 'fallback';
-                $fallbackReason = "AI Router mengembalikan respon HTTP {$status}.";
-            }
-        } catch (\Throwable $e) {
-            Log::warning('AI Router connection exception: '.$e->getMessage());
-            $validationStatus = 'fallback';
-            $fallbackReason = 'Koneksi ke AI router terputus/timeout: '.$e->getMessage();
+        $result = $this->generateGoogleContent($systemPrompt, $fullPrompt, true);
+        $analysisData = $result['ok'] ? $result['data'] : null;
+        $validationStatus = $result['ok'] ? 'valid_schema' : $result['validation_status'];
+        $fallbackReason = $result['ok'] ? '' : $result['reason'];
+        if ($analysisData) {
+            $analysisData['_usage'] = $result['usage'];
+            $analysisData['_finish_reason'] = $result['finish_reason'];
         }
 
         // Fallback analysis when model endpoint is unreachable or returns non-JSON
@@ -157,7 +114,7 @@ class AiMarketAnalysisService
             'market_regime_summary' => $analysisData['market_regime_summary'] ?? 'Ringkasan pasar tidak tersedia.',
             'impact_direction' => in_array($analysisData['impact_direction'] ?? '', ['positive', 'negative', 'mixed', 'unclear']) ? $analysisData['impact_direction'] : 'unclear',
             'impact_horizon' => in_array($analysisData['impact_horizon'] ?? '', ['intraday', 'multi_day', 'long_term']) ? $analysisData['impact_horizon'] : 'multi_day',
-            'confidence_score' => $analysisData['confidence_score'] ?? 0.50,
+            'confidence_score' => $analysisData['confidence_score'] ?? null,
             'structured_output' => $analysisData,
             'validation_status' => $validationStatus,
         ]);
@@ -176,24 +133,28 @@ class AiMarketAnalysisService
             'market_regime_summary' => 'Analisis kuantitatif terintegrasi: data pasar EOD berhasil dicatat ke database. Inferensi LLM saat ini dalam mode fallback terstruktur.',
             'impact_direction' => 'unclear',
             'impact_horizon' => 'multi_day',
-            'confidence_score' => 0.50,
+            'confidence_score' => null,
             'impacted_tickers' => [],
             'verified_facts' => ['Data snapshot EOD diarsipkan secara otomatis'],
             'unverified_points' => [],
             'risks' => [$fallbackReason],
             'unknowns' => ['Arah likuiditas sesi berikutnya'],
             'fallback_reason' => $fallbackReason,
+            'model_status' => 'NOT_RUN',
+            'requested_model' => $this->modelId,
+            'returned_model' => null,
+            'effective_configuration_source' => 'services.consultation_ai (CONSULTATION_MODEL_ID/CONSULTATION_AI_ENDPOINT/CONSULTATION_AI_API_KEY)',
         ];
 
         return MarketAnalysis::create([
             'analysis_run_id' => $run->id,
             'prompt_template_id' => $template?->id,
-            'model_name' => $this->modelId,
+            'model_name' => 'STRUCTURED_FALLBACK',
             'prompt_version' => $template ? $template->version : '1.0.0',
             'market_regime_summary' => $analysisData['market_regime_summary'],
             'impact_direction' => 'unclear',
             'impact_horizon' => 'multi_day',
-            'confidence_score' => 0.50,
+            'confidence_score' => null,
             'structured_output' => $analysisData,
             'validation_status' => 'fallback',
         ]);
@@ -208,11 +169,18 @@ class AiMarketAnalysisService
         ?PredictionSignal $sig = null,
         ?EvidenceSnapshot $ev = null,
         ?NewsItem $news = null,
-        ?CompanyAnalysisMetric $metric = null
+        ?CompanyAnalysisMetric $metric = null,
+        array $componentSnapshot = [],
+        ?array $brokerSnapshot = null,
+        ?string $researchRequestId = null
     ): array {
         $barDateStr = $obs->bar_date->format('Y-m-d');
-        $hasFund = $metric && $metric->fundamental_status === 'CALCULATED';
-        $analysisType = $hasFund ? 'FULL_FUNDAMENTAL_AND_TECHNICAL' : 'PARTIAL_TECHNICAL_ONLY';
+        $fundamentalStatuses = data_get($componentSnapshot, 'bar.component_refresh.fundamental', data_get($componentSnapshot, 'bar_refresh.component_refresh.fundamental', data_get($componentSnapshot, 'fundamental', [])));
+        $hasFundamentalComponent = is_array($fundamentalStatuses)
+            && collect($fundamentalStatuses)->contains(fn ($item) => is_array($item) && ($item['status'] ?? null) === 'REFRESHED_API');
+        $hasFund = ($metric && $metric->fundamental_status === 'CALCULATED') || $hasFundamentalComponent;
+        $analysisType = $hasFund ? 'FUNDAMENTAL_AND_TECHNICAL_COMPONENTS_AVAILABLE' : 'PARTIAL_TECHNICAL_ONLY';
+        $newsStatus = data_get($componentSnapshot, 'bar.component_refresh.news.status', data_get($componentSnapshot, 'bar_refresh.component_refresh.news.status', data_get($componentSnapshot, 'news.status', 'STATUS_UNKNOWN')));
 
         // 1. Content-based indicator payload (independent of metric_id primary key)
         $indicatorPayload = $metric ? implode('|', [
@@ -283,12 +251,16 @@ class AiMarketAnalysisService
             $promptVersion,
         ]));
 
-        // Check if valid explanation for this ticker and bar exists
-        $existing = MarketAnalysis::whereJsonContains('structured_output->ticker', $ticker)
-            ->whereJsonContains('structured_output->bar_date', $barDateStr)
-            ->where('validation_status', 'valid_schema')
-            ->latest('id')
-            ->first();
+        // Cache only within exact request evidence binding. Never reuse another request's analysis.
+        $existing = $researchRequestId
+            ? MarketAnalysis::whereJsonContains('structured_output->ticker', $ticker)
+                ->whereJsonContains('structured_output->bar_date', $barDateStr)
+                ->whereJsonContains('structured_output->research_request_id', $researchRequestId)
+                ->whereJsonContains('structured_output->evidence_snapshot_id', $ev?->id)
+                ->where('validation_status', 'valid_schema')
+                ->latest('id')
+                ->first()
+            : null;
 
         if ($existing) {
             $existingEvidenceHash = $existing->structured_output['evidence_hash'] ?? null;
@@ -314,10 +286,16 @@ class AiMarketAnalysisService
         }
 
         // 2. Check on-demand feature flag and unit testing mode
-        if (! $this->onDemandEnabled || app()->runningUnitTests()) {
+        if (app()->runningUnitTests()) {
             return [
                 'success' => false,
-                'fallback_reason' => 'Inferensi AI on-demand dinonaktifkan atau dalam mode unit testing.',
+                'fallback_reason' => 'TEST_ENVIRONMENT',
+            ];
+        }
+        if (! $this->onDemandEnabled) {
+            return [
+                'success' => false,
+                'fallback_reason' => 'DISABLED_BY_CONFIGURATION',
             ];
         }
 
@@ -330,7 +308,7 @@ class AiMarketAnalysisService
         $volFmt = number_format($obs->volume, 0, ',', '.');
         $barDateIndo = $obs->bar_date->format('d M Y');
 
-        $isValidatedUniverse = array_key_exists($ticker, BeiUniverseRegistry::VALIDATED_ML_UNIVERSE);
+        $isValidatedUniverse = BeiUniverseRegistry::hasProductionMlInference($ticker);
 
         $systemPrompt = "Anda adalah asisten kuantitatif Aether Market Intelligence.\n"
             ."Tugas Anda: Memberikan penjelasan analisis naratif yang objektif, berbasis data faktual tersimpan untuk emiten yang diminta.\n\n"
@@ -377,127 +355,314 @@ class AiMarketAnalysisService
 
         if ($news) {
             $userPrompt .= '• Berita Terkini: ['.($news->source_name ?: 'LKBN ANTARA').'] '.$news->title.' — '.($news->summary ?: '')."\n";
+        } elseif ($newsStatus === 'NOT_FETCHED') {
+            $userPrompt .= "• Berita Terkini: NOT_FETCHED — sumber berita terautentikasi belum diambil. Jangan menyimpulkan berita tidak ada.\n";
+        } elseif ($newsStatus === 'EMPTY_RESPONSE') {
+            $userPrompt .= "• Berita Terkini: EMPTY_RESPONSE — provider merespons kosong. Ini bukan bukti semua berita tidak ada.\n";
+        } elseif ($newsStatus === 'NO_RELEVANT_ITEMS_FOUND') {
+            $userPrompt .= "• Berita Terkini: NO_RELEVANT_ITEMS_FOUND — pencarian provider selesai tanpa item relevan pada rentang yang dipakai.\n";
         } else {
-            $userPrompt .= "• Berita Terkini: Tidak ada berita tersimpan untuk emiten ini dalam 7 hari terakhir.\n";
+            $userPrompt .= "• Berita Terkini: STATUS_UNKNOWN — ketersediaan berita tidak dapat dipastikan.\n";
         }
 
-        if ($hasFund) {
+        if ($hasFund && $metric) {
             $peStr = $metric->pe_ratio !== null ? "{$metric->pe_ratio}x" : 'N/A (Rugi Bersih)';
             $pbvStr = $metric->pbv_ratio !== null ? "{$metric->pbv_ratio}x" : 'N/A';
             $derStr = $metric->der_ratio !== null ? "{$metric->der_ratio}x" : 'N/A';
-            $userPrompt .= "• Data Fundamental: EPS Rp {$metric->eps} | BVPS Rp {$metric->bvps} | PER {$peStr} | PBV {$pbvStr} | DER {$derStr}\n"
-                ."• Status Fundamental: CALCULATED (Lengkap)\n";
+            $userPrompt .= "• Data Fundamental Terhitung: EPS Rp {$metric->eps} | BVPS Rp {$metric->bvps} | PER {$peStr} | PBV {$pbvStr} | DER {$derStr}\n"
+                ."• Status Fundamental: CALCULATED_FROM_COMPONENTS\n";
+        } elseif ($hasFund) {
+            $userPrompt .= "• Data Fundamental: tersedia pada snapshot provider. Gunakan nilai aktual dalam DATA KOMPONEN, jangan menyatakan laporan tidak tersedia.\n"
+                ."• Status Fundamental: REFRESHED_API_COMPONENTS_AVAILABLE; rasio yang tidak tersedia tetap N/A.\n";
         } else {
-            $userPrompt .= "• Data Fundamental: BELUM TERSEDIA pada penyedia data publik yfinance.\n"
-                ."• Batasan Analisis: PARTIAL_TECHNICAL_ONLY. Laporan keuangan belum terunduh, analisis murni teknikal harga EOD dan indikator kuantitatif.\n";
+            $userPrompt .= "• Data Fundamental: NOT_FETCHED_OR_UNAVAILABLE — jangan menyatakan laporan tidak tersedia tanpa status component snapshot.\n"
+                ."• Batasan Analisis: PARTIAL_TECHNICAL_ONLY.\n";
         }
 
+        $userPrompt .= "\nDATA KOMPONEN AKTUAL DAN STATUS PROVENANCE:\n";
+        $userPrompt .= mb_substr(json_encode([
+            'components' => $componentSnapshot,
+            'broker' => $brokerSnapshot,
+            'evidence_id' => $ev?->id,
+            'evidence_hash' => $ev?->data_hash,
+            'research_request_id' => $researchRequestId,
+        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 0, 12000);
+        $userPrompt .= "\nJangan menyebut komponen sebagai tersedia jika statusnya FETCH_FAILED atau NOT_FETCHED.\n";
         $userPrompt .= "\nBerikan penjelasan analisis naratif terstruktur sesuai aturan di atas.";
 
-        // 4. Call 9router endpoint
-        $payload = [
-            'model' => $this->modelId,
-            'messages' => [
-                ['role' => 'system', 'content' => $systemPrompt],
-                ['role' => 'user', 'content' => $userPrompt],
-            ],
-            'max_tokens' => $this->maxTokens,
-            'temperature' => 0.2,
-            'stream' => false,
-        ];
-
+        // 4. Call official Google Gemini endpoint
         $t0 = microtime(true);
-        try {
-            $req = Http::timeout(max(35, $this->timeout));
-            if (! empty($this->apiKey)) {
-                $req = $req->withToken($this->apiKey);
-            }
-            $resp = $req->post($this->endpoint, $payload);
-            $latencyMs = (int) round((microtime(true) - $t0) * 1000);
+        $result = $this->generateGoogleContent($systemPrompt, $userPrompt, false);
+        $latencyMs = (int) round((microtime(true) - $t0) * 1000);
 
-            if ($resp->successful()) {
-                $content = $resp->json('choices.0.message.content');
-                $usage = $resp->json('usage');
+        if ($result['ok']) {
+            $content = $result['text'];
+            $usage = $result['usage'];
 
-                if (! empty($content)) {
-                    // Create persistent DB record
-                    $run = AnalysisRun::create([
-                        'run_id' => 'ONDEMAND_'.$ticker.'_'.now()->format('Ymd_His'),
-                        'trigger_type' => 'telegram_on_demand',
-                        'status' => 'completed',
-                        'started_at' => now()->subMilliseconds($latencyMs),
-                        'completed_at' => now(),
-                    ]);
+            if (! empty($content)) {
+                // Create persistent DB record
+                $run = AnalysisRun::create([
+                    'run_id' => 'ONDEMAND_'.$ticker.'_'.now()->format('Ymd_His'),
+                    'trigger_type' => 'telegram_on_demand',
+                    'status' => 'completed',
+                    'started_at' => now()->subMilliseconds($latencyMs),
+                    'completed_at' => now(),
+                ]);
 
-                    if (! $ev && $obs) {
-                        $rawEvPayload = [
+                if (! $ev && $obs) {
+                    $rawEvPayload = [
+                        'ticker' => $ticker,
+                        'bar_date' => $barDateStr,
+                        'observation_id' => $obs->id,
+                        'close_price' => $obs->close_price,
+                        'evidence_hash' => $evidenceHash,
+                    ];
+                    $ev = EvidenceSnapshot::updateOrCreate(
+                        [
                             'ticker' => $ticker,
-                            'bar_date' => $barDateStr,
-                            'observation_id' => $obs->id,
-                            'close_price' => $obs->close_price,
-                            'evidence_hash' => $evidenceHash,
-                        ];
-                        $ev = EvidenceSnapshot::updateOrCreate(
-                            [
-                                'ticker' => $ticker,
-                                'data_hash' => $evidenceHash,
-                            ],
-                            [
-                                'snapshot_id' => 'SNAP_ONDEMAND_'.$ticker.'_'.substr($evidenceHash, 0, 16),
-                                'market_regime' => 'ONDEMAND_RESEARCH',
-                                'decision_date' => $barDateStr,
-                                'features_snapshot' => $rawEvPayload,
-                                'data_hash' => $evidenceHash,
-                            ]
-                        );
-                    }
-
-                    $analysis = MarketAnalysis::create([
-                        'analysis_run_id' => $run->id,
-                        'prompt_template_id' => null,
-                        'model_name' => $this->modelId,
-                        'prompt_version' => '1.0.0-on-demand',
-                        'market_regime_summary' => trim($content),
-                        'impact_direction' => 'unclear',
-                        'impact_horizon' => 'multi_day',
-                        'confidence_score' => $sig ? $sig->confidence_score : 0.50,
-                        'structured_output' => [
-                            'ticker' => $ticker,
-                            'bar_date' => $barDateStr,
-                            'evidence_snapshot_id' => $ev ? $ev->id : ($sig ? $sig->evidence_snapshot_id : null),
-                            'evidence_hash' => $evidenceHash,
-                            'cache_key' => $cacheKey,
-                            'analysis_type' => $analysisType,
-                            'has_fundamental' => $hasFund,
-                            'latency_ms' => $latencyMs,
-                            'usage' => $usage,
-                            'model_version' => $this->modelId,
-                            'generated_narrative' => trim($content),
+                            'data_hash' => $evidenceHash,
                         ],
-                        'validation_status' => 'valid_schema',
-                    ]);
+                        [
+                            'snapshot_id' => 'SNAP_ONDEMAND_'.$ticker.'_'.substr($evidenceHash, 0, 16),
+                            'market_regime' => 'ONDEMAND_RESEARCH',
+                            'decision_date' => $barDateStr,
+                            'features_snapshot' => $rawEvPayload,
+                            'data_hash' => $evidenceHash,
+                        ]
+                    );
+                }
+
+                $analysis = MarketAnalysis::create([
+                    'analysis_run_id' => $run->id,
+                    'prompt_template_id' => null,
+                    'model_name' => $this->modelId,
+                    'prompt_version' => '1.0.0-on-demand',
+                    'market_regime_summary' => trim($content),
+                    'impact_direction' => 'unclear',
+                    'impact_horizon' => 'multi_day',
+                    'confidence_score' => $sig ? $sig->confidence_score : null,
+                    'structured_output' => [
+                        'ticker' => $ticker,
+                        'bar_date' => $barDateStr,
+                        'evidence_snapshot_id' => $ev ? $ev->id : ($sig ? $sig->evidence_snapshot_id : null),
+                        'evidence_hash' => $evidenceHash,
+                        'research_request_id' => $researchRequestId,
+                        'cache_key' => $cacheKey,
+                        'analysis_type' => $analysisType,
+                        'has_fundamental' => $hasFund,
+                        'latency_ms' => $latencyMs,
+                        'usage' => $usage,
+                        'requested_model' => $this->modelId,
+                        'returned_model' => $result['returned_model'] ?? null,
+                        'endpoint' => preg_replace('/:\/\/[^\/]+/', '://[LOCAL]', $this->endpoint),
+                        'effective_configuration_source' => 'services.consultation_ai (CONSULTATION_MODEL_ID/CONSULTATION_AI_ENDPOINT/CONSULTATION_AI_API_KEY)',
+                        'model_version' => $this->modelId,
+                        'generated_narrative' => trim($content),
+                    ],
+                    'validation_status' => 'valid_schema',
+                ]);
+
+                return [
+                    'success' => true,
+                    'is_cached' => false,
+                    'narrative' => trim($content),
+                    'analysis_id' => $analysis->id,
+                    'model' => $this->modelId,
+                    'usage' => $usage,
+                    'latency_ms' => $latencyMs,
+                ];
+            }
+        }
+
+        return [
+            'success' => false,
+            'fallback_reason' => $result['reason'],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    public function buildOnDemandFallback(
+        string $ticker,
+        MarketObservation $obs,
+        ?EvidenceSnapshot $evidence,
+        ?CompanyAnalysisMetric $metric,
+        string $reason,
+        ?string $researchRequestId = null
+    ): array {
+        $narrative = implode("\n", [
+            "FAKTA PASAR TERLAPOR — {$ticker}",
+            '• Bar EOD: '.$obs->bar_date->toDateString().' via '.$obs->source,
+            '• OHLC: Open '.$obs->open_price.' | High '.$obs->high_price.' | Low '.$obs->low_price.' | Close '.$obs->close_price,
+            '• Volume sesi: '.$obs->volume.' lembar',
+            'INTERPRETASI MODEL & STATUS VALIDASI',
+            '• Narasi LLM tidak tersedia. Analisis ini hanya fallback terstruktur berbasis evidence tersimpan.',
+            '• Model ML: MODEL_NOT_VALIDATED_FOR_INSTRUMENT; tidak ada sinyal beli/jual.',
+            'SKENARIO DAMPAK & RISIKO',
+            '• Risiko dan arah pasar tidak disimpulkan tanpa inferensi tervalidasi.',
+        ]);
+        $run = AnalysisRun::create([
+            'run_id' => 'ONDEMAND_FALLBACK_'.$ticker.'_'.now()->format('Ymd_Hisv'),
+            'trigger_type' => 'dashboard_on_demand',
+            'status' => 'completed',
+            'started_at' => now(),
+            'completed_at' => now(),
+        ]);
+        $analysis = MarketAnalysis::create([
+            'analysis_run_id' => $run->id,
+            'prompt_template_id' => null,
+            'model_name' => 'STRUCTURED_FALLBACK',
+            'prompt_version' => '1.0.0-on-demand-fallback',
+            'market_regime_summary' => $narrative,
+            'impact_direction' => 'unclear',
+            'impact_horizon' => 'multi_day',
+            'confidence_score' => null,
+            'structured_output' => [
+                'ticker' => $ticker,
+                'bar_date' => $obs->bar_date->toDateString(),
+                'evidence_snapshot_id' => $evidence?->id,
+                'research_request_id' => $researchRequestId,
+                'fallback_reason' => $reason,
+                'requested_model' => $this->modelId,
+                'returned_model' => null,
+                'configuration_source' => 'services.consultation_ai (CONSULTATION_MODEL_ID/CONSULTATION_AI_ENDPOINT/CONSULTATION_AI_API_KEY)',
+                'generated_narrative' => $narrative,
+                'model_status' => 'NOT_RUN',
+                'returned_model' => null,
+                'endpoint' => preg_replace('/:\/\/[^\/]+/', '://[LOCAL]', $this->endpoint),
+                'effective_configuration_source' => 'services.consultation_ai (CONSULTATION_MODEL_ID/CONSULTATION_AI_ENDPOINT/CONSULTATION_AI_API_KEY)',
+                'metric_status' => $metric ? 'AVAILABLE' : 'NOT_AVAILABLE',
+            ],
+            'validation_status' => 'fallback',
+        ]);
+
+        return [
+            'success' => true,
+            'is_cached' => false,
+            'narrative' => $narrative,
+            'analysis_id' => $analysis->id,
+            'model' => 'STRUCTURED_FALLBACK',
+            'usage' => null,
+            'latency_ms' => 0,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    protected function generateGoogleContent(string $systemPrompt, string $userPrompt, bool $json): array
+    {
+        if ($this->provider === 'consultation_ai') {
+            $payload = [
+                'model' => $this->modelId,
+                'messages' => [
+                    ['role' => 'system', 'content' => $systemPrompt],
+                    ['role' => 'user', 'content' => $userPrompt],
+                ],
+                'max_tokens' => $this->maxTokens,
+                'temperature' => 0.2,
+                'stream' => false,
+            ];
+            try {
+                $request = Http::timeout($this->timeout)->acceptJson()->asJson();
+                if ($this->apiKey !== '') {
+                    $request = $request->withToken($this->apiKey);
+                }
+                $response = $request->post($this->endpoint, $payload);
+                if (! $response->successful()) {
+                    $status = $response->status();
+                    $reason = match (true) {
+                        $status === 401 || $status === 403 => 'AUTH_FAILED',
+                        $status === 404 => 'MODEL_NOT_FOUND',
+                        $status === 408 || $status === 504 => 'TIMEOUT',
+                        $status === 429 => 'RATE_LIMITED',
+                        $status >= 400 && $status < 500 => 'PROTOCOL_OR_CONFIGURATION_ERROR',
+                        default => 'PROVIDER_ERROR',
+                    };
+                    $providerMessage = trim((string) $response->json('error.message', ''));
+                    $sanitizedMessage = $providerMessage !== ''
+                        ? preg_replace('/(api[_ -]?key|authorization|bearer|token)\s*[:=]?\s*[^\s,;]+/i', '$1=[REDACTED]', $providerMessage)
+                        : null;
 
                     return [
-                        'success' => true,
-                        'is_cached' => false,
-                        'narrative' => trim($content),
-                        'analysis_id' => $analysis->id,
-                        'model' => $this->modelId,
-                        'usage' => $usage,
-                        'latency_ms' => $latencyMs,
+                        'ok' => false,
+                        'validation_status' => 'fallback',
+                        'reason' => $reason,
+                        'provider_error' => $sanitizedMessage,
+                        'usage' => null,
+                        'finish_reason' => null,
                     ];
                 }
+                $text = $response->json('choices.0.message.content');
+                if (! is_string($text) || trim($text) === '') {
+                    return ['ok' => false, 'validation_status' => 'invalid_schema', 'reason' => 'INVALID_RESPONSE', 'usage' => $response->json('usage'), 'finish_reason' => null];
+                }
+
+                return ['ok' => true, 'data' => null, 'text' => trim($text), 'usage' => $response->json('usage'), 'finish_reason' => $response->json('choices.0.finish_reason'), 'returned_model' => $response->json('model')];
+            } catch (\Throwable $e) {
+                Log::warning('AI router on-demand request failed: '.$e::class);
+
+                return ['ok' => false, 'validation_status' => 'fallback', 'reason' => 'TIMEOUT', 'provider_error' => null, 'usage' => null, 'finish_reason' => null];
+            }
+        }
+        if ($this->provider !== 'google') {
+            return ['ok' => false, 'validation_status' => 'blocked', 'reason' => 'Provider dashboard AI tidak didukung.', 'usage' => null, 'finish_reason' => null];
+        }
+        if (empty($this->apiKey)) {
+            return ['ok' => false, 'validation_status' => 'blocked', 'reason' => 'GEMINI_API_KEY belum dikonfigurasi.', 'usage' => null, 'finish_reason' => null];
+        }
+
+        $generationConfig = ['temperature' => 0.2, 'maxOutputTokens' => $this->maxTokens];
+        if ($json) {
+            $generationConfig['responseMimeType'] = 'application/json';
+        }
+        $payload = [
+            'systemInstruction' => ['parts' => [['text' => $systemPrompt]]],
+            'contents' => [['role' => 'user', 'parts' => [['text' => $userPrompt]]]],
+            'generationConfig' => $generationConfig,
+        ];
+
+        for ($attempt = 0; $attempt <= $this->maxRetries; $attempt++) {
+            try {
+                $response = Http::timeout($this->timeout)
+                    ->withHeaders(['x-goog-api-key' => $this->apiKey, 'Content-Type' => 'application/json'])
+                    ->post($this->endpoint, $payload);
+            } catch (\Throwable $e) {
+                if ($attempt < $this->maxRetries) {
+                    usleep((int) (250000 * (2 ** $attempt)));
+
+                    continue;
+                }
+                Log::warning('Google Gemini request failed: '.$e::class);
+
+                return ['ok' => false, 'validation_status' => 'fallback', 'reason' => 'Google Gemini timeout atau koneksi gagal.', 'usage' => null, 'finish_reason' => null];
             }
 
-            return [
-                'success' => false,
-                'fallback_reason' => 'Router AI merespons dengan HTTP '.$resp->status(),
-            ];
-        } catch (\Throwable $e) {
-            return [
-                'success' => false,
-                'fallback_reason' => 'Koneksi ke AI router terputus: '.$e->getMessage(),
-            ];
+            $status = $response->status();
+            if ($response->successful()) {
+                $candidate = $response->json('candidates.0');
+                $text = $response->json('candidates.0.content.parts.0.text');
+                $finish = $candidate['finishReason'] ?? null;
+                if (! is_string($text) || trim($text) === '') {
+                    return ['ok' => false, 'validation_status' => 'invalid_schema', 'reason' => 'Respons Google Gemini kosong atau terblokir.', 'usage' => $response->json('usageMetadata'), 'finish_reason' => $finish];
+                }
+                if ($json) {
+                    $data = json_decode($text, true);
+                    if (! is_array($data) || empty($data['market_regime_summary']) || ! is_string($data['market_regime_summary'])) {
+                        return ['ok' => false, 'validation_status' => 'invalid_schema', 'reason' => 'JSON Google Gemini tidak memenuhi schema dashboard.', 'usage' => $response->json('usageMetadata'), 'finish_reason' => $finish];
+                    }
+
+                    return ['ok' => true, 'data' => $data, 'text' => $text, 'usage' => $response->json('usageMetadata'), 'finish_reason' => $finish];
+                }
+
+                return ['ok' => true, 'data' => null, 'text' => $text, 'usage' => $response->json('usageMetadata'), 'finish_reason' => $finish];
+            }
+
+            if (! in_array($status, [408, 429, 500, 502, 503, 504], true) || $attempt >= $this->maxRetries) {
+                Log::warning('Google Gemini HTTP failure', ['status' => $status]);
+
+                return ['ok' => false, 'validation_status' => 'fallback', 'reason' => "Google Gemini HTTP {$status}.", 'usage' => null, 'finish_reason' => null];
+            }
+            usleep((int) (250000 * (2 ** $attempt)));
         }
+
+        return ['ok' => false, 'validation_status' => 'fallback', 'reason' => 'Google Gemini retry exhausted.', 'usage' => null, 'finish_reason' => null];
     }
 }

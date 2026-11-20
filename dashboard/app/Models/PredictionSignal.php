@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -25,8 +26,41 @@ class PredictionSignal extends Model
         'expires_at' => 'datetime',
         'target_price' => 'float',
         'invalidation_price' => 'float',
+        'technical_context' => 'array',
         'metadata' => 'array',
     ];
+
+    public function scopeOperational(Builder $query): Builder
+    {
+        return $query
+            ->where(function (Builder $q) {
+                $q->whereNull('metadata->operational_eligibility')
+                    ->orWhere('metadata->operational_eligibility', 'OPERATIONAL');
+            })
+            ->where(function (Builder $q) {
+                $q->whereNull('metadata->delivery_status')
+                    ->orWhere('metadata->delivery_status', '!=', 'DRY_RUN_ARCHIVE');
+            });
+    }
+
+    public function scopeDeliveredToUser(Builder $query): Builder
+    {
+        return $query->where('metadata->delivery_status', 'SENT')
+            ->whereNotNull('telegram_message_id');
+    }
+
+    public function scopeMonitoringEligible(Builder $query): Builder
+    {
+        return $query->where(function (Builder $q) {
+            $q->where(function (Builder $delivered) {
+                $delivered->where('metadata->delivery_status', 'SENT')
+                    ->whereNotNull('telegram_message_id');
+            })->orWhere('metadata->monitoring_cohort', 'SHADOW_TEST');
+        })->where(function (Builder $q) {
+            $q->whereNull('metadata->operational_eligibility')
+                ->orWhere('metadata->operational_eligibility', '!=', 'NON_OPERATIONAL_ARCHIVE');
+        });
+    }
 
     public function evidenceSnapshot(): BelongsTo
     {

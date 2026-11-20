@@ -16,10 +16,30 @@ class HermesProcessResearchQueueCommand extends Command
     {
         $limit = (int) $this->option('limit');
 
-        $pending = ResearchRequest::where('status', 'pending')
-            ->orderBy('id', 'asc')
-            ->take($limit)
-            ->get();
+        $claimed = collect();
+        \DB::transaction(function () use ($limit, &$claimed): void {
+            $claimed = ResearchRequest::where('status', 'pending')
+                ->where(function ($query) {
+                    $query->whereNull('research_metadata->deadline_at')
+                        ->orWhereRaw("(research_metadata->>'deadline_at')::timestamptz > ?", [now('UTC')->toIso8601String()]);
+                })
+                ->orderBy('id', 'asc')
+                ->lock('FOR UPDATE SKIP LOCKED')
+                ->limit(max(1, min($limit, 5)))
+                ->get();
+
+            foreach ($claimed as $request) {
+                $metadata = is_array($request->research_metadata) ? $request->research_metadata : [];
+                $metadata['worker_claimed_at'] = now('UTC')->toIso8601String();
+                $metadata['worker_owner'] = gethostname();
+                $request->update([
+                    'status' => 'collecting',
+                    'research_metadata' => $metadata,
+                ]);
+            }
+        });
+
+        $pending = $claimed;
 
         if ($pending->isEmpty()) {
             $this->line('No pending research requests in queue.');

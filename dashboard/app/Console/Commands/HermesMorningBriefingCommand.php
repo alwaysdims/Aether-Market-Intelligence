@@ -3,9 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Models\AnalysisRun;
-use App\Models\MarketObservation;
+use App\Models\MonitoringEvent;
 use App\Models\TelegramOutbox;
 use App\Services\BeiCalendarService;
+use App\Services\TelegramFormattingService;
+use App\Services\TelegramTradingPlanService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
@@ -16,8 +18,11 @@ class HermesMorningBriefingCommand extends Command
 
     protected $description = 'Publikasikan Briefing Pagi BEI pukul 08:30 WIB berbasis data EOD sesi perdagangan sebelumnya';
 
-    public function handle(BeiCalendarService $calendar): int
-    {
+    public function handle(
+        BeiCalendarService $calendar,
+        TelegramFormattingService $formatter,
+        TelegramTradingPlanService $tradingPlanService
+    ): int {
         $nowWib = Carbon::now('Asia/Jakarta');
         $force = (bool) $this->option('force');
         $dryRun = (bool) $this->option('dry-run');
@@ -32,88 +37,110 @@ class HermesMorningBriefingCommand extends Command
         $prevDateStr = $prevTradingDay->format('Y-m-d');
         $prevDateFmt = $prevTradingDay->format('d M Y');
 
-        $this->info("Menyiapkan Briefing Pagi (Acuan Sesi: {$prevDateFmt})...");
+        $this->info("Menyiapkan Briefing Pagi & Trading Plan Pra-Pasar (Acuan Sesi: {$prevDateFmt})...");
 
-        // Ambil data EOD tervalidasi sesi sebelumnya untuk 10 konstituen utama
-        $tickers = ['BBCA', 'BBRI', 'BMRI', 'BBNI', 'ASII', 'TLKM', 'MAPI', 'ARTO', 'MEDC', 'SMRA'];
-        $observations = MarketObservation::whereIn('ticker', $tickers)
-            ->where('bar_date', $prevDateStr)
-            ->where('validation_status', 'VALID')
-            ->get();
+        // 1. Generate Trading Plan Pra-Pasar Terstruktur (08:30 WIB)
+        $planData = $tradingPlanService->generatePreMarketPlan($nowWib);
+        $reportText = $tradingPlanService->renderTelegramTradingPlan($planData, $nowWib);
 
-        if ($observations->isEmpty()) {
-            $this->warn("Data observasi EOD untuk {$prevDateStr} belum lengkap. Mengambil bar terbaru tersimpan...");
-            $observations = MarketObservation::whereIn('ticker', $tickers)
-                ->where('validation_status', 'VALID')
-                ->latest('bar_date')
-                ->get()
-                ->unique('ticker');
+        // Dry-run must not write signals, evidence, monitoring events, or outbox rows.
+        $registeredSignals = $dryRun
+            ? []
+            : $tradingPlanService->recordTradingPlanSignals($planData, $nowWib, '08:30', false);
+        $planIds = array_map(fn ($s) => $s->prediction_id, $registeredSignals);
+
+        if ($dryRun) {
+            $this->line($reportText);
+            $this->info('[PREVIEW / DRY-RUN] Briefing Pagi selesai tanpa membuat outbox atau rekod eksekusi produksi.');
+
+            return Command::SUCCESS;
         }
 
-        $lines = [
-            "BRIEFING PAGI PASAR BEI (PRE-OPENING) — {$nowWib->format('d M Y, 08:30')} WIB",
-            '──────────────────────────────────────────',
-            "• Sesi Acuan : Penutupan Bursa EOD {$prevDateFmt}",
-            '• Usia Data  : EOD Final Sesi Sebelumnya (Sesi Pre-Opening BEI: 08:45 WIB)',
-            '• Cakupan    : 10 Konstituen Saham Utama Terpantau',
-            '• Sumber     : Canonical EOD Market Data (Status: VALID)',
-            '──────────────────────────────────────────',
-            'REKAPITULASI PENUTUPAN SESI SEBELUMNYA:',
-        ];
+        $dedupKey = 'MORNING_BRIEFING_'.$nowWib->format('Ymd');
+        $existing = TelegramOutbox::where('dedup_key', $dedupKey)->first();
+        if ($existing && $existing->status === 'SENT') {
+            $this->info("Briefing Pagi hari ini sudah terkirim (Outbox #{$existing->id}, Msg ID #{$existing->telegram_message_id}). Menolak penyiaran ulang.");
 
-        foreach ($observations as $obs) {
-            $close = number_format($obs->close_price, 0, ',', '.');
-            $volM = round(($obs->volume ?? 0) / 1e6, 2);
-            $lines[] = sprintf(
-                '• %-4s: Rp %s | Vol: %s jt lbr | Sumber: %s',
-                $obs->ticker,
-                $close,
-                $volM,
-                $obs->source
-            );
+            return Command::SUCCESS;
         }
 
-        $lines[] = '──────────────────────────────────────────';
-        $lines[] = 'STATUS OPERASIONAL & KETERBATASAN:';
-        $lines[] = '• Quote Intraday (09:15, 12:15, 15:15): DINONAKTIFKAN (QUARANTINED).';
-        $lines[] = '• Catatan: Provider mencampur transaksi Pasar Negosiasi pada feed quote; sistem dilarang berspekulasi memakai data intraday tanpa filter papan reguler.';
-        $lines[] = '• Integritas: Rp0 Biaya data, tanpa eksekusi broker, tanpa rekomendasi spekulatif.';
-        $lines[] = '──────────────────────────────────────────';
-        $lines[] = "Dipublikasikan oleh Aether Market Intelligence pada {$nowWib->format('d/m/Y H:i:s')} WIB";
-
-        $reportText = implode("\n", $lines);
-
+        $dueAt = Carbon::createFromFormat('Y-m-d H:i', "{$nowWib->format('Y-m-d')} 08:30", 'Asia/Jakarta')->setTimezone('UTC');
         $runId = 'RUN_BRIEFING_'.$nowWib->format('Ymd_His').'_'.Str::lower(Str::random(4));
-        AnalysisRun::create([
-            'run_id' => $runId,
-            'trigger_type' => 'morning_briefing_0830',
-            'status' => 'completed',
-            'started_at' => $nowWib,
-            'completed_at' => now('Asia/Jakarta'),
-            'metadata' => [
-                'as_of_session' => $prevDateStr,
-                'tickers_covered' => $observations->pluck('ticker')->toArray(),
-                'report_type' => 'MORNING_BRIEFING',
-                'quote_intraday_status' => 'QUARANTINED',
-            ],
-        ]);
+        $chatId = config('services.telegram.chat_id', '5923895922');
+        $triggerSource = filter_var(env('AETHER_SCHEDULED_TRIGGER', false), FILTER_VALIDATE_BOOL)
+            ? 'SCHEDULED'
+            : ($this->input->isInteractive() ? 'MANUAL_CLI' : 'SCHEDULED');
 
-        if (! $dryRun) {
-            $chatId = config('services.telegram.chat_id', '5923895922');
-            TelegramOutbox::create([
-                'dedup_key' => 'MORNING_BRIEFING_'.$nowWib->format('Ymd'),
-                'chat_id' => $chatId,
-                'message_type' => 'SYSTEM_ALERT',
-                'payload_text' => $reportText,
-                'status' => 'QUEUED',
+        $candidateTickers = array_map(fn ($c) => $c['ticker'], array_merge(
+            $planData['candidates_scalping'] ?? [],
+            $planData['candidates_swing'] ?? [],
+            $planData['candidates_bsjp'] ?? []
+        ));
+
+        AnalysisRun::firstOrCreate(
+            ['run_id' => $runId],
+            [
+                'trigger_type' => 'morning_briefing_0830',
+                'status' => 'completed',
+                'started_at' => $nowWib,
+                'completed_at' => now('Asia/Jakarta'),
                 'metadata' => [
-                    'briefing_date' => $nowWib->format('Y-m-d'),
-                    'session_reference' => $prevDateStr,
+                    'as_of_session' => $prevDateStr,
+                    'tickers_covered' => $candidateTickers,
+                    'report_type' => 'MORNING_BRIEFING',
+                    'quote_intraday_status' => 'QUARANTINED',
+                    'trigger_source' => $triggerSource,
+                ],
+            ]
+        );
+
+        $outboxItem = $formatter->enqueueOutbox(
+            dedupKey: $dedupKey,
+            messageType: 'SYSTEM_ALERT',
+            payload: $reportText,
+            predictionId: $planIds[0] ?? null,
+            replyToMessageId: null,
+            chatId: $chatId,
+            dueAt: $dueAt,
+            triggerSource: $triggerSource,
+            metadata: [
+                'report_type' => 'MORNING_BRIEFING',
+                'briefing_date' => $nowWib->format('Y-m-d'),
+                'session_reference' => $prevDateStr,
+                'run_id' => $runId,
+                'chat_id' => $chatId,
+                'due_at_wib' => "{$nowWib->format('Y-m-d')} 08:30 WIB",
+                'plan_ids' => $planIds,
+            ]
+        );
+
+        foreach ($registeredSignals as $sig) {
+            $sig->update([
+                'metadata' => array_merge($sig->metadata ?? [], [
+                    'delivery_status' => 'QUEUED',
+                    'outbox_id' => $outboxItem->id,
+                ]),
+            ]);
+
+            MonitoringEvent::create([
+                'prediction_id' => $sig->prediction_id,
+                'event_type' => 'ALERT_QUEUED',
+                'event_time' => $nowWib,
+                'first_observed_at' => $nowWib,
+                'price_observed' => $sig->reference_price,
+                'description' => "Trading plan diantrekan ke Telegram outbox #{$outboxItem->id}.",
+                'metadata' => [
+                    'outbox_id' => $outboxItem->id,
+                    'slot' => '08:30',
                 ],
             ]);
-            $this->info('Briefing Pagi berhasil dimasukkan ke antrean outbox Telegram.');
-        } else {
-            $this->line($reportText);
+        }
+
+        $this->info("Briefing Pagi berhasil diantrekan (Outbox #{$outboxItem->id}, Status: {$outboxItem->status}, Due At: {$dueAt->toIso8601String()}).");
+
+        // Optimasi: Trigger atomic outbox processing immediately if due_at <= now, preserving lease and deduplication
+        if (! $dryRun && ! empty($outboxItem->id)) {
+            $formatter->processOutboxQueue(mockOnly: app()->runningUnitTests());
         }
 
         return Command::SUCCESS;

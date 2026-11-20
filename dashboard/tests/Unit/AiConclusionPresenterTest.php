@@ -153,8 +153,8 @@ class AiConclusionPresenterTest extends TestCase
 
         // 1. BBCA without inference for this bar
         $bbcaNoSig = AiConclusionPresenter::present('BBCA', null, null, $obs, null, collect(), collect(), collect(), null);
-        $this->assertTrue($bbcaNoSig['section_d']['is_constituent']);
-        $this->assertSame('WALK_FORWARD_VALIDATED_CONSTITUENT', $bbcaNoSig['section_d']['validation_badge']);
+        $this->assertFalse($bbcaNoSig['section_d']['is_constituent']);
+        $this->assertSame('NON_UNIVERSE_INSTRUMENT', $bbcaNoSig['section_d']['validation_badge']);
         $this->assertSame('NO_ACTIVE_INFERENCE_FOR_BAR', $bbcaNoSig['section_d']['signal_status']);
         $this->assertSame('N/A', $bbcaNoSig['section_d']['confidence']);
         $this->assertSame('N/A', $bbcaNoSig['section_d']['probability']);
@@ -170,12 +170,12 @@ class AiConclusionPresenterTest extends TestCase
         ]);
 
         $bbcaWithSig = AiConclusionPresenter::present('BBCA', null, null, $obs, null, collect(), collect(), collect([$signal]), null);
-        $this->assertTrue($bbcaWithSig['section_d']['has_active_inference']);
-        $this->assertEquals('RandomForest_v1.0', $bbcaWithSig['section_d']['model_name']);
-        $this->assertEquals('Strategi Aturan Teknikal (EXP-04)', $bbcaWithSig['section_d']['strategy_protocol']);
-        $this->assertSame('ABSTAIN (Hasil Sinyal Model)', $bbcaWithSig['section_d']['signal_status']);
-        $this->assertSame('30,1%', $bbcaWithSig['section_d']['confidence']);
-        $this->assertSame('65,1%', $bbcaWithSig['section_d']['probability']);
+        $this->assertFalse($bbcaWithSig['section_d']['has_active_inference']);
+        $this->assertSame('N/A (artefak produksi belum tersedia)', $bbcaWithSig['section_d']['model_name']);
+        $this->assertSame('Strategi Aturan Teknikal (EXP-04)', $bbcaWithSig['section_d']['strategy_protocol']);
+        $this->assertSame('NO_ACTIVE_INFERENCE_FOR_BAR', $bbcaWithSig['section_d']['signal_status']);
+        $this->assertSame('N/A', $bbcaWithSig['section_d']['confidence']);
+        $this->assertSame('N/A', $bbcaWithSig['section_d']['probability']);
 
         // 3. ASDM is not in 10 validated constituents
         $asdmData = AiConclusionPresenter::present('ASDM', null, null, $obs, null, collect(), collect(), collect([$signal]), null);

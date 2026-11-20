@@ -124,6 +124,45 @@ class TahapILanjutanRoutingAndAutomationTest extends TestCase
         }
     }
 
+    public function test_system_status_is_compact_and_separates_coverage_and_finality(): void
+    {
+        MarketObservation::create([
+            'ticker' => 'BBCA',
+            'bar_date' => '2026-11-06',
+            'observation_time' => Carbon::parse('2026-11-06 16:00:00', 'Asia/Jakarta'),
+            'open_price' => 5000,
+            'close_price' => 5100,
+            'high_price' => 5150,
+            'low_price' => 4950,
+            'volume' => 1000000,
+            'is_eod_final' => false,
+            'validation_status' => 'VALID',
+            'source' => 'IDX Edge PRO',
+        ]);
+
+        $response = $this->twoWayService->handleInboundMessage([
+            'update_id' => 'status_compact_fixture',
+            'message' => [
+                'message_id' => 1901,
+                'from' => ['id' => '5923895922'],
+                'chat' => ['id' => '5923895922'],
+                'text' => 'status sistem Aether sekarang',
+            ],
+        ]);
+
+        $text = $response['reply_text'];
+
+        $this->assertStringContainsString('Registri universe', $text);
+        $this->assertStringContainsString('Instrumen dengan data:', $text);
+        $this->assertStringContainsString('Freshness           :', $text);
+        $this->assertStringContainsString('Finality            : PROVISIONAL', $text);
+        $this->assertStringContainsString('AI on-demand       :', $text);
+        $this->assertStringContainsString('Model ML            :', $text);
+        $this->assertStringNotContainsString('Sesi Resmi Terverifikasi', $text);
+        $this->assertStringNotContainsString('Saham Pilot IDX', $text);
+        $this->assertLessThan(3900, strlen($text));
+    }
+
     /**
      * 2. Test Zero LLM & Zero Arbitrary Shell Execution.
      */
@@ -331,6 +370,33 @@ class TahapILanjutanRoutingAndAutomationTest extends TestCase
     /**
      * Test outbox retry backoff, attempt counting, and error tracking.
      */
+    public function test_outbox_job_filter_only_claims_matching_scheduled_job(): void
+    {
+        $matching = TelegramOutbox::create([
+            'dedup_key' => 'TEST_FILTER_MATCH',
+            'chat_id' => (string) config('services.telegram.chat_id'),
+            'message_type' => 'SYSTEM_ALERT',
+            'payload_text' => 'matching job',
+            'status' => 'QUEUED',
+            'metadata' => ['scheduled_job_id' => 101],
+        ]);
+        $other = TelegramOutbox::create([
+            'dedup_key' => 'TEST_FILTER_OTHER',
+            'chat_id' => (string) config('services.telegram.chat_id'),
+            'message_type' => 'SYSTEM_ALERT',
+            'payload_text' => 'other job',
+            'status' => 'QUEUED',
+            'metadata' => ['scheduled_job_id' => 202],
+        ]);
+
+        $result = $this->formattingService->processOutboxQueue(mockOnly: true, scheduledJobId: 101);
+
+        $this->assertSame(1, $result['processed']);
+        $this->assertSame(1, $result['sent']);
+        $this->assertSame('SENT', $matching->fresh()->status);
+        $this->assertSame('QUEUED', $other->fresh()->status);
+    }
+
     public function test_outbox_retry_backoff_and_exponential_delay(): void
     {
         $outbox = $this->formattingService->enqueueOutbox(

@@ -2,12 +2,12 @@
 
 namespace App\Services;
 
+use App\Models\DataRevisionArchive;
 use App\Models\MarketAnalysis;
 use App\Models\MarketSnapshot;
 use App\Models\PostHorizonEvaluation;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
-use Illuminate\Support\Facades\Log;
 
 class PostHorizonEvaluatorService
 {
@@ -34,9 +34,9 @@ class PostHorizonEvaluatorService
         $impactedTickers = $structured['impacted_tickers'] ?? [];
         $tickersToEvaluate = [];
 
-        if (!empty($impactedTickers) && is_array($impactedTickers)) {
+        if (! empty($impactedTickers) && is_array($impactedTickers)) {
             foreach ($impactedTickers as $it) {
-                if (is_array($it) && !empty($it['ticker'])) {
+                if (is_array($it) && ! empty($it['ticker'])) {
                     $tickersToEvaluate[$it['ticker']] = $it['direction'] ?? $analysis->impact_direction;
                 }
             }
@@ -65,12 +65,12 @@ class PostHorizonEvaluatorService
                 ->orderByDesc('bar_date')
                 ->first();
 
-            if (!$refSnap) {
+            if (! $refSnap) {
                 // If no past snapshot, find closest available snapshot
                 $refSnap = MarketSnapshot::where('ticker', $ticker)->orderBy('bar_date')->first();
             }
 
-            if (!$refSnap) {
+            if (! $refSnap) {
                 continue;
             }
 
@@ -85,6 +85,7 @@ class PostHorizonEvaluatorService
 
             if ($existing) {
                 $created[] = $existing;
+
                 continue;
             }
 
@@ -127,7 +128,7 @@ class PostHorizonEvaluatorService
         $asOfDateStr = $asOfWib->format('Y-m-d');
         $query = PostHorizonEvaluation::query();
 
-        if (!$force) {
+        if (! $force) {
             $query->where('status', 'pending');
         }
 
@@ -144,12 +145,14 @@ class PostHorizonEvaluatorService
             // Strict anti-lookahead check: do not evaluate before target date even with force
             if ($asOfDateStr < $targetDateStr) {
                 $skippedCount++;
+
                 continue;
             }
 
             // Same-day target check: do not evaluate before EOD final cutoff (16:00 WIB)
-            if ($asOfDateStr === $targetDateStr && !$this->calendar->isEodFinal($asOfWib)) {
+            if ($asOfDateStr === $targetDateStr && ! $this->calendar->isEodFinal($asOfWib)) {
                 $waitingForCloseCount++;
+
                 continue;
             }
 
@@ -160,7 +163,7 @@ class PostHorizonEvaluatorService
                 ->orderBy('id')
                 ->first();
 
-            if (!$actualSnap) {
+            if (! $actualSnap) {
                 // If target date is over 30 calendar days past and still no data, mark as cannot_evaluate
                 $targetCarbon = Carbon::parse($targetDateStr);
                 $asOfCarbon = Carbon::parse($asOfDateStr);
@@ -175,6 +178,7 @@ class PostHorizonEvaluatorService
                 } else {
                     $waitingForDataCount++;
                 }
+
                 continue;
             }
 
@@ -189,6 +193,7 @@ class PostHorizonEvaluatorService
                     'evaluated_at' => now(),
                 ]);
                 $missingDataCount++;
+
                 continue;
             }
 
@@ -218,13 +223,20 @@ class PostHorizonEvaluatorService
                 $notes = "Prediksi '{$predictedDir}' bertolak belakang dengan arah aktual {$actualDir} (Return {$returnPct}%).";
             }
 
+            $isProvisional = ($actualSnap->is_eod_final === false) || ($actualSnap->finality_basis === 'PROVISIONAL_POST_MARKET');
+            $evalStatus = $isProvisional ? 'evaluated_provisional' : 'evaluated';
+            $evalOutcome = $isProvisional ? "provisional_{$outcome}" : $outcome;
+            if ($isProvisional) {
+                $notes = '[PROVISIONAL_OUTCOME] '.$notes.' [Berdasarkan bar penutupan provisional pasca-pasar. Menunggu rekonsiliasi kliring final.]';
+            }
+
             $eval->update([
                 'actual_price' => $actualPrice,
                 'actual_price_date' => $actualSnap->bar_date,
                 'actual_return_pct' => $returnPct,
                 'actual_direction' => $actualDir,
-                'status' => 'evaluated',
-                'outcome' => $outcome,
+                'status' => $evalStatus,
+                'outcome' => $evalOutcome,
                 'rubric_notes' => $notes,
                 'evaluated_at' => now(),
             ]);
@@ -239,6 +251,86 @@ class PostHorizonEvaluatorService
             'waiting_for_data_count' => $waitingForDataCount,
             'waiting_for_close_count' => $waitingForCloseCount,
         ];
+    }
+
+    /**
+     * Recalculate evaluations affected by an EOD bar revision, maintaining full audit trail.
+     */
+    public function recalculateForRevisedBar(string $ticker, string $barDate, float $newClosePrice): int
+    {
+        $evals = PostHorizonEvaluation::where('ticker', $ticker)
+            ->where(function ($q) use ($barDate) {
+                $q->whereDate('target_eval_date', $barDate)
+                    ->orWhereDate('reference_price_date', $barDate);
+            })
+            ->whereIn('status', ['evaluated', 'evaluated_provisional'])
+            ->get();
+
+        $recalculated = 0;
+        foreach ($evals as $eval) {
+            $isTargetDate = Carbon::parse($eval->target_eval_date)->toDateString() === $barDate;
+            $refPrice = $isTargetDate ? (float) $eval->reference_price : $newClosePrice;
+            $actualPrice = $isTargetDate ? $newClosePrice : (float) $eval->actual_price;
+
+            if ($refPrice <= 0 || $actualPrice <= 0) {
+                continue;
+            }
+
+            // Version and archive previous evaluation state
+            $revCount = DataRevisionArchive::where('record_type', 'PostHorizonEvaluation')
+                ->where('record_id', (string) $eval->id)
+                ->count();
+
+            DataRevisionArchive::create([
+                'record_type' => 'PostHorizonEvaluation',
+                'record_id' => (string) $eval->id,
+                'ticker' => $ticker,
+                'period_or_date' => $barDate,
+                'revision_number' => $revCount + 1,
+                'previous_payload' => $eval->toArray(),
+                'previous_hash' => hash('sha256', json_encode($eval->toArray())),
+                'new_payload' => ['actual_price' => $actualPrice, 'reference_price' => $refPrice],
+                'new_hash' => hash('sha256', "{$ticker}|{$barDate}|{$refPrice}|{$actualPrice}"),
+                'changes' => [
+                    'actual_price' => ['old' => $eval->actual_price, 'new' => $actualPrice],
+                    'outcome' => ['old' => $eval->outcome],
+                ],
+                'source' => 'IDX Edge PRO',
+                'reason' => 'EOD_BAR_REVISION_RECALCULATION',
+            ]);
+
+            $returnPct = round((($actualPrice - $refPrice) / $refPrice) * 100.0, 4);
+            $actualDir = 'flat';
+            if ($returnPct > 0.50) {
+                $actualDir = 'positive';
+            } elseif ($returnPct < -0.50) {
+                $actualDir = 'negative';
+            }
+
+            $predictedDir = strtolower($eval->predicted_direction);
+            $outcome = 'neutral';
+            if (in_array($predictedDir, ['unclear', 'mixed', 'neutral'], true)) {
+                $outcome = 'neutral';
+            } elseif ($predictedDir === $actualDir) {
+                $outcome = 'correct';
+            } else {
+                $outcome = 'incorrect';
+            }
+
+            $eval->update([
+                'actual_price' => $actualPrice,
+                'reference_price' => $refPrice,
+                'actual_return_pct' => $returnPct,
+                'actual_direction' => $actualDir,
+                'outcome' => $outcome,
+                'rubric_notes' => '[REVISION_V'.($revCount + 1)."] Rekalkulasi akibat revisi bar settlement resmi BEI. Return {$returnPct}%, arah {$actualDir}.",
+                'evaluated_at' => now(),
+            ]);
+
+            $recalculated++;
+        }
+
+        return $recalculated;
     }
 
     /**

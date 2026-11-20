@@ -13,7 +13,7 @@
                 <h1 class="text-lg font-bold text-[#F5F1E8] tracking-tight uppercase">System Health & Diagnostik Komponen</h1>
             </div>
             <p class="text-xs text-[#F5F1E8]/60">
-                Pemantauan kesehatan waktu nyata infrastruktur Aether Market Intelligence (Database, AI Router, Worker, Scheduler, dan Saluran Notifikasi).
+                Snapshot diagnostik infrastruktur Aether Market Intelligence. Konektivitas, inferensi, validasi, dan penyimpanan AI dilaporkan terpisah.
             </p>
         </div>
 
@@ -24,7 +24,7 @@
     </div>
 
     <!-- Active Component Status Cards -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <!-- PostgreSQL Health -->
         <div class="bg-[#0A213D] border border-[#F5F1E8]/10 rounded-lg p-4 space-y-2">
             <div class="flex items-center justify-between">
@@ -38,24 +38,42 @@
             </div>
             <div class="text-[11px] text-[#F5F1E8]/60 font-mono space-y-0.5">
                 <p>Latensi: <span class="text-[#E5C49B] font-bold tabular-nums">{{ $health['database']['latency_ms'] ?? 0 }} ms</span></p>
-                <p>Port: 5432 &bull; project-bot</p>
+                <p>Port: 5432 &bull; {{ $health['database']['details']['sql_identity']['database'] ?? $health['database']['details']['database'] ?? 'UNKNOWN' }}</p>
             </div>
         </div>
 
-        <!-- AI Router Health -->
+        <!-- Dashboard AI Health -->
         <div class="bg-[#0A213D] border border-[#F5F1E8]/10 rounded-lg p-4 space-y-2">
             <div class="flex items-center justify-between">
                 <span class="text-xs font-bold text-[#F5F1E8] flex items-center space-x-1.5">
                     <span>🤖</span>
-                    <span>Gemini 9router</span>
+                    <span>AI Dashboard</span>
                 </span>
-                <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold {{ ($health['ai_model']['status'] ?? '') === 'healthy' ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/30' : 'bg-rose-950/60 text-rose-300 border border-rose-500/30' }}">
-                    {{ strtoupper($health['ai_model']['status'] ?? 'CONFIGURED') }}
+                <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold {{ ($health['dashboard_ai']['status'] ?? '') === 'healthy' ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/30' : 'bg-amber-950/60 text-amber-300 border border-amber-500/30' }}">
+                    {{ strtoupper($health['dashboard_ai']['status'] ?? 'NOT_VERIFIED') }}
                 </span>
             </div>
             <div class="text-[11px] text-[#F5F1E8]/60 font-mono space-y-0.5">
-                <p>Latensi: <span class="text-[#E5C49B] font-bold tabular-nums">{{ $health['ai_model']['latency_ms'] ?? 0 }} ms</span></p>
-                <p>Port: 20128 &bull; Gemini 3.8</p>
+                <p>Provider: <span class="text-[#E5C49B]">{{ strtoupper($health['dashboard_ai']['details']['provider'] ?? 'UNKNOWN') }}</span></p>
+                <p>Model: {{ $health['dashboard_ai']['details']['model'] ?? 'N/A' }}</p>
+                <p>Endpoint: {{ ($health['dashboard_ai']['details']['endpoint_reachable'] ?? false) ? 'TERJANGKAU' : 'BELUM TERBUKTI' }}</p>
+                <p>Inferensi valid tersimpan: {{ ($health['dashboard_ai']['details']['result_validated'] ?? false) && ($health['dashboard_ai']['details']['result_stored'] ?? false) ? 'YA' : 'TIDAK' }}</p>
+            </div>
+        </div>
+
+        <!-- Consultation Router Health -->
+        <div class="bg-[#0A213D] border border-[#F5F1E8]/10 rounded-lg p-4 space-y-2">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-[#F5F1E8]">9router Konsultasi</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-mono font-bold {{ ($health['consultation_router']['status'] ?? '') === 'healthy' ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/30' : 'bg-amber-950/60 text-amber-300 border border-amber-500/30' }}">
+                    {{ strtoupper($health['consultation_router']['status'] ?? 'NOT_VERIFIED') }}
+                </span>
+            </div>
+            <div class="text-[11px] text-[#F5F1E8]/60 font-mono space-y-0.5">
+                <p>Model: {{ $health['consultation_router']['details']['model'] ?? 'N/A' }}</p>
+                <p>Endpoint: {{ ($health['consultation_router']['details']['endpoint_reachable'] ?? false) ? 'TERJANGKAU' : 'BELUM TERBUKTI' }}</p>
+                <p>Model tersedia: {{ ($health['consultation_router']['details']['model_available'] ?? false) ? 'YA' : 'TIDAK' }}</p>
+                <p>Inferensi health check: TIDAK DIJALANKAN</p>
             </div>
         </div>
 

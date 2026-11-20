@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html lang="id">
+@php $readOnlyRecovery = getenv('DASHBOARD_CANDIDATE') === '1'; @endphp
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
+    <meta name="aether-research-auth" content="{{ hash_hmac('sha256', session()->getId(), (string) config('app.key')) }}">
     <title>{{ $brandConfig['system_name'] ?? config('app.name', 'Aether Market Intelligence') }}</title>
     <link rel="icon" type="image/png" href="{{ asset('images/logo.png') }}">
     <link rel="shortcut icon" href="{{ asset('favicon.ico') }}">
@@ -79,7 +81,19 @@
                 Market Monitor
             </a>
 
-            <!-- 3. News & Event -->
+            <!-- 3. Running Trade -->
+            <a href="{{ route('dashboard.running_trade') }}" class="flex items-center px-3 py-2.5 rounded text-xs font-medium transition {{ request()->routeIs('dashboard.running_trade') ? 'bg-[#0A213D] text-[#E5C49B] border border-[#E5C49B]/30 font-semibold' : 'text-[#F5F1E8]/70 hover:text-[#F5F1E8] hover:bg-[#0A213D]/60' }}">
+                <svg class="w-4 h-4 mr-3 {{ request()->routeIs('dashboard.running_trade') ? 'text-[#E5C49B]' : 'text-[#F5F1E8]/40' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                Running Trade
+            </a>
+
+            <!-- 4. Riset AI -->
+            <a href="{{ route('dashboard.research') }}" class="flex items-center px-3 py-2.5 rounded text-xs font-medium transition {{ request()->routeIs('dashboard.research') ? 'bg-[#0A213D] text-[#E5C49B] border border-[#E5C49B]/30 font-semibold' : 'text-[#F5F1E8]/70 hover:text-[#F5F1E8] hover:bg-[#0A213D]/60' }}">
+                <svg class="w-4 h-4 mr-3 {{ request()->routeIs('dashboard.research') ? 'text-[#E5C49B]' : 'text-[#F5F1E8]/40' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v18m9-9H3"></path></svg>
+                Riset AI
+            </a>
+
+            <!-- 5. News & Event -->
             <a href="{{ route('dashboard.news') }}" class="flex items-center px-3 py-2.5 rounded text-xs font-medium transition {{ request()->routeIs('dashboard.news') ? 'bg-[#0A213D] text-[#E5C49B] border border-[#E5C49B]/30 font-semibold' : 'text-[#F5F1E8]/70 hover:text-[#F5F1E8] hover:bg-[#0A213D]/60' }}">
                 <svg class="w-4 h-4 mr-3 {{ request()->routeIs('dashboard.news') ? 'text-[#E5C49B]' : 'text-[#F5F1E8]/40' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path></svg>
                 News & Event
@@ -110,7 +124,7 @@
                 </div>
                 <div class="flex items-center justify-between text-[#F5F1E8]/50 text-[10px] pt-1 border-t border-[#F5F1E8]/5">
                     <span class="truncate">Hermes Engine</span>
-                    <span class="font-mono text-[#E5C49B]">PROFIL PROD</span>
+                    <span class="font-mono text-[#E5C49B]">{{ env('DASHBOARD_CANDIDATE') === '1' ? 'MODE PEMULIHAN' : 'PROFIL PROD' }}</span>
                 </div>
             </a>
         </div>
@@ -140,8 +154,13 @@
                 </form>
 
                 <!-- On-Demand Modal Trigger -->
+                @if($readOnlyRecovery)
+                    <span class="px-2.5 py-1.5 bg-amber-950/60 text-amber-300 border border-amber-500/30 rounded text-[10px] font-mono font-semibold">
+                        MODE PEMULIHAN: READER READ-ONLY
+                    </span>
+                @endif
                 <button onclick="openResearchModal()" class="px-2.5 py-1.5 bg-[#E5C49B] hover:bg-[#D6B284] text-[#05152B] rounded text-xs font-semibold tracking-wide transition flex items-center shadow-sm">
-                    <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
+                    <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 013.86.517l-.318.158a6 6 0 013.86.517L6.05 15.21a2 2 0 011.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
                     Riset AI
                 </button>
 
@@ -238,7 +257,7 @@
                 <div>
                     <label class="block text-[11px] font-medium text-[#F5F1E8]/70 uppercase tracking-wider mb-1">Fokus Analisis</label>
                     <select id="modalAnalysisType" class="w-full bg-[#0A213D] border border-[#F5F1E8]/15 rounded px-3 py-2 text-xs text-[#F5F1E8] focus:outline-none focus:border-[#E5C49B]">
-                        <option value="COMPREHENSIVE">Komprehensif (Teknikal + Fundamental + Narasi Gemini)</option>
+                        <option value="COMPREHENSIVE">Komprehensif (Teknikal + Fundamental + Narasi AI)</option>
                         <option value="SWING">Penyaringan Ayunan Swing (SWING_FILTER_V1)</option>
                         <option value="TECHNICAL">Analisis Geometri & Indikator Teknikal</option>
                         <option value="FUNDAMENTAL">Audit Valuasi & Laporan Keuangan Fiskal</option>
@@ -340,6 +359,7 @@
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': csrfToken,
+                        'X-Aether-Research-Auth': document.querySelector('meta[name="aether-research-auth"]').content,
                         'Accept': 'application/json',
                     },
                     body: JSON.stringify({ ticker: ticker, analysis_type: analysisType })
@@ -350,10 +370,9 @@
 
                 if (data.success) {
                     resArea.className = 'text-xs p-2.5 rounded bg-emerald-950/60 border border-emerald-500/30 text-emerald-200';
+                    localStorage.setItem('aether.research.request_id', data.request_id);
                     resArea.innerHTML = `<span class="font-bold">Request Terkirim:</span> ${data.message} <br><span class="font-mono text-[10px] text-emerald-400">Request ID: ${data.request_id}</span>`;
-                    setTimeout(() => {
-                        closeResearchModal();
-                    }, 3500);
+                    pollResearchStatus(data.request_id, resArea);
                 } else {
                     resArea.className = 'text-xs p-2.5 rounded bg-rose-950/60 border border-rose-500/30 text-rose-200';
                     resArea.innerText = data.message || 'Gagal memproses permintaan riset.';
@@ -368,7 +387,72 @@
             }
         }
 
+        async function pollResearchStatus(requestId, resArea, initialAttempt = 0) {
+            const url = "{{ url('/api/research') }}/" + encodeURIComponent(requestId);
+            let attempt = initialAttempt;
+            let delayMs = attempt < 20 ? 3000 : 10000;
+
+            while (true) {
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+                try {
+                    const response = await fetch(url, { headers: {
+                        'X-Aether-Research-Auth': document.querySelector('meta[name="aether-research-auth"]').content,
+                        'Accept': 'application/json'
+                    } });
+                    if (!response.ok) return;
+                    const data = await response.json();
+                    localStorage.setItem('aether.research.request_id', requestId);
+                    resArea.classList.remove('hidden');
+                    resArea.innerHTML = `<span class="font-bold">Request ID:</span> <span class="font-mono">${requestId}</span><br><span class="font-mono text-[10px]">Status: ${data.status}</span>`;
+
+                    if (['COMPLETED', 'PARTIAL', 'FAILED', 'DEADLINE_EXCEEDED'].includes(data.status)) {
+                        localStorage.removeItem('aether.research.request_id');
+                        const result = data.result || {};
+                        const output = result.structured_output || {};
+                        if (result.market_regime_summary) {
+                            const details = [
+                                `Model: ${result.model_name || 'UNKNOWN'}`,
+                                `Validation: ${result.validation_status || 'UNKNOWN'}`,
+                                output.bar_date ? `Bar: ${output.bar_date}` : '',
+                                output.fallback_reason ? `Fallback reason: ${output.fallback_reason}` : '',
+                            ].filter(Boolean).join(' | ');
+                            const meta = document.createElement('div');
+                            meta.className = 'mt-2 text-[10px] text-amber-200';
+                            meta.textContent = details;
+                            const narrative = document.createElement('div');
+                            narrative.className = 'block mt-1 whitespace-pre-wrap';
+                            narrative.textContent = result.market_regime_summary;
+                            resArea.append(meta, narrative);
+                        }
+                        return;
+                    }
+
+                    attempt += 1;
+                    if (attempt === 20) {
+                        resArea.innerHTML += '<br><span class="text-amber-300">Masih diproses. Polling dilanjutkan dengan backoff sampai deadline backend.</span>';
+                    }
+                    delayMs = attempt < 20 ? 3000 : 15000;
+                } catch (err) {
+                    resArea.innerHTML = '<span class="text-amber-300">Status belum terbaca. Pemulihan otomatis mencoba lagi.</span>';
+                    delayMs = 15000;
+                }
+            }
+        }
+
+        const savedResearchRequestId = localStorage.getItem('aether.research.request_id');
+        if (savedResearchRequestId) {
+            openResearchModal();
+            const savedArea = document.getElementById('modalResponseArea');
+            if (savedArea) {
+                savedArea.className = 'text-xs p-2.5 rounded bg-amber-950/60 border border-amber-500/30 text-amber-200';
+                pollResearchStatus(savedResearchRequestId, savedArea, 20);
+            }
+        }
+
         async function toggleWatchlist(ticker, btnElement) {
+            @if($readOnlyRecovery)
+            return;
+            @else
             const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
             try {
                 const response = await fetch("{{ route('dashboard.watchlist.toggle') }}", {
@@ -376,6 +460,7 @@
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': csrfToken,
+                        'X-Aether-Research-Auth': document.querySelector('meta[name="aether-research-auth"]').content,
                         'Accept': 'application/json',
                     },
                     body: JSON.stringify({ ticker: ticker })
@@ -395,6 +480,7 @@
             } catch (err) {
                 console.error('Watchlist toggle failed:', err);
             }
+            @endif
         }
     </script>
 </body>

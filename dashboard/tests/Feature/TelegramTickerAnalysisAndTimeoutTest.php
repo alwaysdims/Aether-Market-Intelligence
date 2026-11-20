@@ -40,7 +40,12 @@ class TelegramTickerAnalysisAndTimeoutTest extends TestCase
             'low_price' => 254.0,
             'close_price' => 260.0,
             'volume' => 32107600,
-            'source' => 'Yahoo Finance v8 / yfinance',
+            'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
+            'validation_status' => 'VALID',
             'is_eod_final' => true,
             'delay_minutes' => 15,
             'data_hash' => 'hash_smra_test',
@@ -81,7 +86,12 @@ class TelegramTickerAnalysisAndTimeoutTest extends TestCase
             'low_price' => 5000.0,
             'close_price' => 5025.0,
             'volume' => 495623900,
-            'source' => 'Yahoo Finance v8 / yfinance',
+            'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
+            'validation_status' => 'VALID',
             'is_eod_final' => true,
             'delay_minutes' => 15,
             'data_hash' => 'hash_bbca_test',
@@ -227,6 +237,7 @@ class TelegramTickerAnalysisAndTimeoutTest extends TestCase
         $this->assertStringContainsString('Retrospective Replay      : 10 rekod abstain', $res['reply_text']);
         $this->assertStringContainsString('Evaluasi Historis Lama   : 30 rekod', $res['reply_text']);
         $this->assertStringContainsString('EOD Otomatis Nonaktif', $res['reply_text']);
+        $this->assertStringNotContainsString('PostgreSQL project-bot OK', $res['reply_text']);
         $this->assertStringNotContainsString('*', $res['reply_text']);
     }
 

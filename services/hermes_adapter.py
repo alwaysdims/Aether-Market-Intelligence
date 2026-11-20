@@ -279,30 +279,9 @@ def handle_market_snapshots(payload: Any) -> Dict[str, Any]:
     failed_tickers = []
     ticker_bar_dates = {}
 
-    # Pre-fetch batch download if auto_download is enabled and not in mock mode
+    # Pre-fetch batch download via yfinance dinonaktifkan permanen
+    # Seluruh data harga, histori, dan OHLCV dialihkan ke IDX Edge PRO.
     batch_dfs = {}
-    if auto_download and not mock_data:
-        try:
-            import yfinance as yf
-            sym_map = {s.strip().upper().replace(".JK", ""): f"{s.strip().upper().replace('.JK', '')}.JK" for s in symbols}
-            raw_batch = yf.download(list(sym_map.values()), period="1mo", interval="1d", progress=False, auto_adjust=False, timeout=20)
-            if raw_batch is not None and not getattr(raw_batch, "empty", True):
-                if isinstance(raw_batch.columns, pd.MultiIndex):
-                    for clean_sym, full_sym in sym_map.items():
-                        try:
-                            sub_df = pd.DataFrame({
-                                attr: raw_batch[attr][full_sym]
-                                for attr in ["Open", "High", "Low", "Close", "Volume"]
-                                if attr in raw_batch.columns.levels[0] and full_sym in raw_batch[attr]
-                            }).dropna(subset=["Open", "High", "Low", "Close"])
-                            if not sub_df.empty:
-                                val_ok, _ = validate_eod_dataframe(sub_df, clean_sym)
-                                if val_ok:
-                                    batch_dfs[clean_sym] = sub_df
-                        except Exception:
-                            pass
-        except Exception:
-            pass
 
     for sym in symbols:
         clean_sym = sym.strip().upper().replace(".JK", "")

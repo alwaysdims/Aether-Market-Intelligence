@@ -95,6 +95,12 @@ class IdxExpansionAndFundamentalAnalysisTest extends TestCase
             'low_price' => 4950.0,
             'close_price' => 5050.0,
             'volume' => 10000000,
+            'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'validation_status' => 'VALID',
             'fetched_at' => $pastUtc,
             'observation_time' => $pastUtc,
             'is_eod_final' => true,
@@ -125,6 +131,12 @@ class IdxExpansionAndFundamentalAnalysisTest extends TestCase
             'low_price' => 128.0,
             'close_price' => 130.0,
             'volume' => 25000000,
+            'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'validation_status' => 'VALID',
             'is_eod_final' => true,
         ]);
 
@@ -198,6 +210,8 @@ class IdxExpansionAndFundamentalAnalysisTest extends TestCase
             'close_price' => 130.0,
             'volume' => 25000000,
             'is_eod_final' => true,
+            'source' => 'IDX Edge PRO',
+            'validation_status' => 'VALID',
         ]);
 
         CompanyAnalysisMetric::create([
@@ -293,6 +307,12 @@ class IdxExpansionAndFundamentalAnalysisTest extends TestCase
             'low_price' => 254.0,
             'close_price' => 260.0,
             'volume' => 32107600,
+            'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'validation_status' => 'VALID',
             'is_eod_final' => true,
         ]);
 

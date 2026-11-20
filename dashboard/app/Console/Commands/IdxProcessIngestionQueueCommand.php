@@ -121,6 +121,7 @@ class IdxProcessIngestionQueueCommand extends Command
         }
 
         $processed = 0;
+        $selectedScopeComplete = true;
         foreach ($jobs as $job) {
             $job->update([
                 'status' => 'RUNNING',
@@ -135,12 +136,18 @@ class IdxProcessIngestionQueueCommand extends Command
             $res = $ingestionService->ingestTicker($ticker, false);
 
             if ($res['success'] ?? false) {
-                $isCalculated = ($res['fundamental_status'] ?? '') === 'CALCULATED';
+                $isCalculated = ($res['bars_stored'] ?? 0) > 0
+                    && (($res['source_trace']['market'] ?? null) === 'IDX Edge PRO');
                 $partialReason = $res['partial_reason'] ?? ($isCalculated ? null : 'INCOMPLETE_DATA');
+                $coverageStatus = $isCalculated ? 'MARKET_DATA_COMPLETE' : 'MARKET_DATA_INCOMPLETE';
+                if (($res['fundamental_status'] ?? '') === 'DATA_UNAVAILABLE') {
+                    $partialReason = 'FUNDAMENTAL_DATA_UNAVAILABLE';
+                }
                 $missingComps = $res['missing_components'] ?? [];
                 $isRetryable = $res['retryable'] ?? false;
                 $nextRetryAt = $isRetryable ? now()->addHours(6) : null;
 
+                $selectedScopeComplete = $selectedScopeComplete && $isCalculated && (($res['source_trace']['market'] ?? null) === 'IDX Edge PRO');
                 $job->update([
                     'status' => $isCalculated ? 'COMPLETED' : 'PARTIAL',
                     'progress_pct' => 100,
@@ -149,6 +156,7 @@ class IdxProcessIngestionQueueCommand extends Command
                     'lease_expires_at' => null,
                     'checkpoint_data' => array_merge($res, [
                         'partial_reason' => $partialReason,
+                        'coverage_status' => $coverageStatus,
                         'missing_components' => $missingComps,
                         'retryable' => $isRetryable,
                         'next_retry_at' => $nextRetryAt?->toIso8601String(),
@@ -171,6 +179,8 @@ class IdxProcessIngestionQueueCommand extends Command
         }
 
         $this->info("Selesai memproses {$processed} pekerjaan antrean.");
+        $this->line('selected_scope_complete: '.($selectedScopeComplete ? 'true' : 'false'));
+        $this->line('universe_fully_fresh: false (batch limit scope; full target verification belum selesai)');
 
         return Command::SUCCESS;
     }

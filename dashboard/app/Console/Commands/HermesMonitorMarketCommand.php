@@ -23,7 +23,7 @@ class HermesMonitorMarketCommand extends Command
         $this->line("Waktu Pemantauan : {$nowWib->format('d M Y, H:i:s')} WIB");
         $this->line('Status Sesi BEI  : '.($session['is_open'] ? 'TERBUKA' : 'TUTUP')." ({$session['session']})");
         $this->line("Keterangan Sesi  : {$session['description']}");
-        $this->line('Sumber Data      : EOD Tracking via Yahoo Finance (15-min delayed / EOD final)');
+        $this->line('Sumber Data      : IDX Edge PRO EOD (15-min delayed / EOD final)');
 
         if ($this->option('ingest')) {
             $this->info('Ingesting observations from cleaned data...');

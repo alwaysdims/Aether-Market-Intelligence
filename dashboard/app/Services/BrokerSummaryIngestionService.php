@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\BrokerSummary;
 use App\Models\DataRevisionArchive;
 use App\Models\DataSource;
+use Carbon\Carbon;
 
 class BrokerSummaryIngestionService
 {
@@ -12,6 +13,20 @@ class BrokerSummaryIngestionService
         protected IdxEdgeClient $client,
         protected DataSourceRegistryService $registry
     ) {}
+
+    /**
+     * Fetch broker summary for seven calendar days ending at reference session.
+     * Provider owns session coverage; caller must not sum overlapping snapshots.
+     *
+     * @return array<string, mixed>
+     */
+    public function summaryForSevenCalendarDays(string $ticker, string $endDate): array
+    {
+        $end = Carbon::parse($endDate)->startOfDay();
+        $start = $end->copy()->subDays(6);
+
+        return $this->client->brokerSummary($ticker, $start->toDateString(), 'all', 50, $end->toDateString(), true);
+    }
 
     /**
      * Synchronize broker summary for a ticker on a specific session.
@@ -24,19 +39,15 @@ class BrokerSummaryIngestionService
         $dateStr = $date ?? now('Asia/Jakarta')->toDateString();
 
         $source = DataSource::where('name', 'IDX Edge Broker Summary')->first();
-        if ($source) {
-            $source->update(['last_attempt_at' => now('UTC')]);
-        }
+        $this->updateSourceMetadata($source, ['last_attempt_at' => now('UTC')]);
 
         $response = $this->client->brokerSummary($ticker, $dateStr, $flow, $limit);
         if (! $response['success']) {
-            if ($source) {
-                $source->update([
-                    'last_error_at' => now('UTC'),
-                    'last_error_message' => $response['message'] ?? 'Gagal mengambil broker summary.',
-                    'health' => 'degraded',
-                ]);
-            }
+            $this->updateSourceMetadata($source, [
+                'last_error_at' => now('UTC'),
+                'last_error_message' => $response['message'] ?? 'Gagal mengambil broker summary.',
+                'health' => 'degraded',
+            ]);
 
             return [
                 'success' => false,
@@ -140,15 +151,13 @@ class BrokerSummaryIngestionService
             $totalSellValue += $sval;
         }
 
-        if ($source) {
-            $source->update([
-                'last_success_at' => now('UTC'),
-                'last_error_at' => null,
-                'last_error_message' => null,
-                'health' => 'healthy',
-                'data_quality' => 'PROVIDER_SUPPLIED',
-            ]);
-        }
+        $this->updateSourceMetadata($source, [
+            'last_success_at' => now('UTC'),
+            'last_error_at' => null,
+            'last_error_message' => null,
+            'health' => 'healthy',
+            'data_quality' => 'PROVIDER_SUPPLIED',
+        ]);
 
         $topBuyers = BrokerSummary::where('ticker', $ticker)
             ->where('summary_date', $dateStr)
@@ -177,5 +186,19 @@ class BrokerSummaryIngestionService
             'total_sell_value' => $totalSellValue,
             'synced_at' => now('UTC')->toIso8601String(),
         ];
+    }
+
+    /** @param array<string, mixed> $attributes */
+    protected function updateSourceMetadata(?DataSource $source, array $attributes): void
+    {
+        if (! $source) {
+            return;
+        }
+
+        try {
+            $source->update($attributes);
+        } catch (\Throwable $error) {
+            logger()->warning('[BrokerSummaryIngestion] Data source metadata update skipped: '.$error::class);
+        }
     }
 }

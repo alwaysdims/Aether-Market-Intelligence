@@ -33,23 +33,17 @@ class TechnicalMetricsCalculationService
         $asOfDateStr = $asOfDate ?? Carbon::now('Asia/Jakarta')->toDateString();
 
         // Retrieve operational historical bars strictly from VALID and authoritative operational sources (IDX Edge PRO)
-        // Cold archive Yahoo is explicitly excluded from operational calculation unless expressly permitted.
+        // Technical indicators MUST use PROVIDER_BACK_ADJUSTED to ensure splits/dividends don't distort SMA/RSI/MACD/ATR.
         // Orders by bar_date ascending.
         $bars = MarketObservation::where('ticker', $ticker)
             ->whereDate('bar_date', '<=', $asOfDateStr)
             ->where('validation_status', 'VALID')
             ->where('source', 'IDX Edge PRO')
+            ->where('board_scope', 'RG')
+            ->where('interval', '1d')
+            ->where('adjustment_mode', 'PROVIDER_BACK_ADJUSTED')
             ->orderBy('bar_date', 'asc')
             ->get(['bar_date', 'open_price', 'high_price', 'low_price', 'close_price', 'volume', 'source', 'adjustment_mode']);
-
-        // Fallback: If no IDX Edge PRO bars exist yet, check if Yahoo archive exists but flag strictly as HISTORICAL_ARCHIVE_ONLY
-        if ($bars->isEmpty()) {
-            $bars = MarketObservation::where('ticker', $ticker)
-                ->whereDate('bar_date', '<=', $asOfDateStr)
-                ->where('validation_status', 'VALID')
-                ->orderBy('bar_date', 'asc')
-                ->get(['bar_date', 'open_price', 'high_price', 'low_price', 'close_price', 'volume', 'source', 'adjustment_mode']);
-        }
 
         $n = $bars->count();
         if ($n === 0) {
@@ -62,6 +56,7 @@ class TechnicalMetricsCalculationService
 
         $firstDate = Carbon::parse($firstBar->bar_date)->toDateString();
         $lastDate = Carbon::parse($latestBar->bar_date)->toDateString();
+        $effectiveAsOfDate = $lastDate;
         $sourcesUsed = $bars->pluck('source')->unique()->values()->all();
         $adjustmentMode = $latestBar->adjustment_mode ?? 'PROVIDER_BACK_ADJUSTED';
 
@@ -193,9 +188,14 @@ class TechnicalMetricsCalculationService
             'input_bars' => $n,
             'first_date' => $firstDate,
             'last_date' => $lastDate,
-            'as_of_date' => $asOfDateStr,
+            'as_of_date' => $effectiveAsOfDate,
             'sources' => $sourcesUsed,
+            'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'interval' => '1d',
             'adjustment_mode' => $adjustmentMode,
+            'support_resistance_method' => 'rolling_min_max',
+            'support_resistance_window_bars' => 20,
             'adtv_20' => $adtv20,
             'sufficiency' => [
                 'sma_20' => $sma20 !== null ? 'SUFFICIENT' : "INSUFFICIENT_{$n}_OF_20",
@@ -216,7 +216,7 @@ class TechnicalMetricsCalculationService
         return CompanyAnalysisMetric::updateOrCreate(
             [
                 'ticker' => $ticker,
-                'as_of_date' => $asOfDateStr,
+                'as_of_date' => $effectiveAsOfDate,
             ],
             [
                 'close_price' => $latestClose,

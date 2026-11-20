@@ -21,10 +21,10 @@ class AiConversationService
 
     public function __construct()
     {
-        $this->endpoint = (string) config('services.ai_router.endpoint', 'http://127.0.0.1:20128/v1');
-        $this->modelId = (string) config('services.ai_router.model_id', 'ag/gemini-3.8-flash-high');
-        $this->apiKey = (string) config('services.ai_router.api_key', '');
-        $this->timeout = (int) config('services.ai_router.timeout', 20);
+        $this->endpoint = (string) config('services.consultation_ai.endpoint', 'http://127.0.0.1:20128/v1');
+        $this->modelId = (string) config('services.consultation_ai.model_id', 'gemini/gemini-3.6-flash');
+        $this->apiKey = (string) config('services.consultation_ai.api_key', '');
+        $this->timeout = (int) config('services.consultation_ai.timeout', 25);
         $this->onDemandEnabled = (bool) config('services.ai_router.on_demand_enabled', true);
     }
 
@@ -71,8 +71,14 @@ class AiConversationService
             ."Ruang Lingkup Layanan:\n"
             ."1. Pembelajaran dan edukasi saham: Jelaskan konsep pasar modal, rasio valuasi (PER, PBV), profitabilitas (ROE), dividen, serta cara membandingkan saham secara mendalam dan mudah dipahami.\n"
             ."2. Analisis teknikal & fundamental: Gunakan data harga bar EOD, indikator teknikal tersimpan, dan berita Antara News.\n"
-            ."3. Konsultasi analitis portofolio: Bantu pengguna mengevaluasi kepemilikan saham, menghitung bobot posisi, floating PnL, alokasi target awal 50% trading / 50% investasi, dan risiko konsentrasi. Jika kepemilikan belum dicatat, tanyakan ticker, lot, dan harga beli rata-rata.\n"
-            ."4. Screening & rekomendasi: Gunakan kriteria kuantitatif terstruktur (likuiditas, rentang bar, stabilitas). Rekomendasi analitis dibedakan dari sinyal ML formal.\n"
+            ."3. Konsultasi analitis portofolio & modal kas:\n"
+            ."   - Normalisasi nominal modal kas: misal '200k' = Rp 200.000, '1jt' = Rp 1.000.000. Jangan menganggap modal ini otomatis seluruh kekayaan atau saldo portofolio pengguna.\n"
+            ."   - Pembelian saham bursa BEI wajib per lot (1 lot = 100 lembar) dengan estimasi fee beli (default 0,15%). Batas harga saham maksimal untuk modal Rp 200.000 adalah ~Rp 1.990 - Rp 2.000 per lembar.\n"
+            ."   - Tanyakan informasi penting yang kurang: terutama horizon investasi (apakah swing trading jangka pendek atau investasi jangka panjang) dan profil toleransi risiko pengguna.\n"
+            ."   - Dilarang menyimpan atau mencatat posisi/aset ke portofolio tanpa instruksi perubahan eksplisit dari pengguna.\n"
+            ."4. Kondisi pasar & screening:\n"
+            ."   - Pembahasan kondisi pasar wajib merujuk pada benchmark/breadth penutupan bursa resmi EOD (IHSG). Sebutkan tanggal sesi data (contoh: EOD 30 Oktober 2026), jangan menyebutnya data live intraday (quote intraday dikarantina).\n"
+            ."   - Screening saham berbasis modal: periksa batas minimal 1 lot, likuiditas transaksi, dan kecukupan bukti. Tidak wajib memaksakan rekomendasi saham jika kondisi pasar tidak mendukung atau likuiditas tidak memadai.\n"
             ."5. Prediksi ML & Sinyal: Model ML Aether berstatus default ABSTAIN (NO_SIGNAL) jika keyakinan < 40% (Tau 0.70) untuk melindungi modal. Model ML 5 hari tidak berlaku untuk keputusan investasi jangka panjang.\n"
             .'6. Konteks percakapan: Gunakan konteks emiten yang baru dibahas ('.($recentTicker ?: 'belum ada emiten spesifik').") untuk pertanyaan lanjutan seperti 'berita apa yang mendukung?', 'kenapa abstain?', atau 'bagaimana risikonya?'.\n\n"
             ."Batasan dan Larangan Keras:\n"
@@ -81,6 +87,11 @@ class AiConversationService
             ."3. Eksekusi broker dan order pasar TIDAK TERSEDIA (Aether murni sistem intelijen dan analisis, bukan platform trading/brokerage).\n"
             ."4. Format teks bersih: jangan gunakan format markdown yang berantakan atau karakter asterisk '*' yang tidak perlu.\n"
             ."5. ATRIBUSI SUMBER & GROUNDING ANALISIS BUKTI:\n"
+            ."   - Koreksi Interpretasi Generik:\n"
+            ."     * Satu candle bukan bukti tren multi-sesi: jangan menyimpulkan tren jangka menengah/panjang hanya dari 1 bar harian.\n"
+            ."     * Rugi bersih bukan otomatis rugi operasional: telusuri laba usaha (operating profit) terpisah dari pos beban non-operasional, rugi pelepasan aset, atau translasi kurs.\n"
+            ."     * Gross average broker bukan cost basis, support pasti, atau jaminan kelayakan swing: harga rata-rata broker hanya mencerminkan volume-weighted price transaksi pada jendela tertentu, bukan modal tertahan (inventory cost) atau bantalan harga.\n"
+            ."     * Bedakan periode broker yang diminta pengguna dari rentang sesi historis yang benar-benar tercakup dalam database/respons provider.\n"
             ."   - Bedakan fakta laporan, perhitungan deterministik, risiko keuangan, dan penyebab harga bursa.\n"
             ."   - Tanggal bar harga pasar wajib disebutkan (contoh: 27 Oktober 2026 Rp 2.870) dan persentase perubahan berbasis prev close.\n"
             ."   - Margin Laba: Pendapatan naik (+59,56%) dan laba bruto turun (-2,63%) menyimpulkan gross margin menyusut dari 14,17% ke 8,64% (-5,53 poin persentase). Jangan mengarang penyebab lemahnya pricing power atau komponen biaya tanpa bukti catatan.\n"
@@ -151,7 +162,10 @@ class AiConversationService
                     }
 
                     $provenance['ai_status'] = 'LIVE_TOOL_CALL_EXECUTED';
-                    $provenance['model_used'] = $this->modelId;
+                    $provenance['requested_model'] = $this->modelId;
+                    $provenance['returned_model'] = $data['model'] ?? null;
+                    $provenance['configuration_source'] = 'services.consultation_ai (CONSULTATION_MODEL_ID/CONSULTATION_AI_ENDPOINT/CONSULTATION_AI_API_KEY)';
+                    $provenance['model_used'] = $data['model'] ?? $this->modelId;
                     $provenance['tool_name'] = $toolName;
                     $provenance['tool_args'] = $toolArgs;
                     $provenance['latency_ms'] = $durationMs;
@@ -159,6 +173,25 @@ class AiConversationService
                     $provenance['recent_context_ticker'] = $recentTicker;
 
                     $toolOutput = $toolExecutor->executeTool($toolName, $toolArgs, $userId, $chatId, $provenance);
+
+                    // Persist grounded tool evidence before any synthesis call.
+                    $evidenceRecord = null;
+                    try {
+                        $evidenceHash = hash('sha256', $toolOutput);
+                        $evidenceRecord = EvidenceSnapshot::create([
+                            'snapshot_id' => 'EV_CONSULT_'.$toolName.'_'.now()->format('Ymd_His').'_'.substr(uniqid(), -4),
+                            'ticker' => $recentTicker ?: 'MARKET',
+                            'decision_date' => now()->toDateString(),
+                            'market_regime' => 'SIDEWAYS',
+                            'features_snapshot' => ['tool' => $toolName, 'output' => $toolOutput],
+                            'data_hash' => $evidenceHash,
+                        ]);
+                        $provenance['ai_evidence_id'] = $evidenceRecord->id;
+                        $provenance['ai_evidence_hash'] = $evidenceHash;
+                    } catch (\Throwable $e) {
+                        Log::error('[AiConversationService] Grounded evidence persistence failed before synthesis: '.$e->getMessage());
+                        throw new \RuntimeException('Grounded evidence persistence failed before synthesis.', 0, $e);
+                    }
 
                     // For analytical follow-ups, synthesize tool output into natural Indonesian
                     if (in_array($toolName, ['get_related_news', 'screen_stocks', 'compare_stocks', 'get_instrument_analysis', 'calculate_capital_allocation', 'search_latest_disclosures_and_filings', 'get_broker_summary', 'get_broker_accumulation', 'get_company_fundamentals'])) {
@@ -181,18 +214,9 @@ class AiConversationService
                         $finalText = $toolOutput;
                     }
 
-                    // Snapshot evidence and record analysis run for full audit traceability
+                    // Record analysis after synthesis; evidence already exists before synthesis.
                     if (is_array($provenance)) {
                         try {
-                            $evidenceHash = hash('sha256', $toolOutput);
-                            $ev = EvidenceSnapshot::create([
-                                'ticker' => $recentTicker ?: 'MARKET',
-                                'snapshot_type' => 'TOOL_OUTPUT_'.$toolName,
-                                'data_hash' => $evidenceHash,
-                                'raw_payload' => ['tool' => $toolName, 'output' => $toolOutput],
-                                'captured_at' => now(),
-                            ]);
-
                             $run = AnalysisRun::create([
                                 'run_id' => 'CONSULT_'.$toolName.'_'.now()->format('Ymd_His').'_'.substr(uniqid(), -4),
                                 'trigger_type' => 'TELEGRAM_CONSULTATION',
@@ -204,13 +228,13 @@ class AiConversationService
                                     'run_type' => 'ASYNC_AI_CONSULTATION',
                                     'model_used' => $this->modelId,
                                     'narrative' => $finalText,
+                                    'evidence_id' => $provenance['ai_evidence_id'] ?? null,
                                 ],
                             ]);
 
                             $provenance['ai_analysis_id'] = $run->id;
-                            $provenance['ai_evidence_id'] = $ev->id;
                         } catch (\Throwable $e) {
-                            Log::warning('[AiConversationService] Failed to record AnalysisRun/Evidence: '.$e->getMessage());
+                            Log::warning('[AiConversationService] Failed to record AnalysisRun: '.$e->getMessage());
                         }
                     }
 
@@ -224,7 +248,10 @@ class AiConversationService
                     $cleanContent = $this->sanitizeResponse(trim($content));
 
                     $provenance['ai_status'] = 'LIVE_COMPLETION_SUCCESS';
-                    $provenance['model_used'] = $this->modelId;
+                    $provenance['requested_model'] = $this->modelId;
+                    $provenance['returned_model'] = $data['model'] ?? null;
+                    $provenance['configuration_source'] = 'services.consultation_ai (CONSULTATION_MODEL_ID/CONSULTATION_AI_ENDPOINT/CONSULTATION_AI_API_KEY)';
+                    $provenance['model_used'] = $data['model'] ?? $this->modelId;
                     $provenance['latency_ms'] = $durationMs;
                     $provenance['tokens_used'] = $data['usage']['total_tokens'] ?? null;
                     $provenance['recent_context_ticker'] = $recentTicker;
@@ -383,7 +410,16 @@ class AiConversationService
                 $data = $this->parseResponseData($raw);
                 $text = $data['choices'][0]['message']['content'] ?? null;
                 if ($text && trim($text) !== '') {
-                    return $this->sanitizeResponse(trim($text));
+                    $cleanText = $this->sanitizeResponse(trim($text));
+                    $brokerAvailable = preg_match('/Broker RG:.*Top-N=(?!0\\b)[1-9][0-9]*/i', $toolOutput) === 1;
+                    $brokerDenied = preg_match('/(broker.*(tidak tersedia|tidak ada|nihil|tidak tercakup)|tidak ada.*broker|tidak ditemukan.*broker)/i', $cleanText) === 1;
+                    $mlStatusCollapsed = str_contains($toolOutput, 'NO_ACTIVE_INFERENCE_FOR_BAR')
+                        && str_contains($cleanText, 'NO_SIGNAL_ABSTAIN');
+                    if (($brokerAvailable && $brokerDenied) || $mlStatusCollapsed) {
+                        return $this->sanitizeResponse($toolOutput);
+                    }
+
+                    return $cleanText;
                 }
             }
         } catch (\Throwable $e) {

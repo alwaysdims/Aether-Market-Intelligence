@@ -7,6 +7,8 @@ use App\Models\IdxCompanyRegistry;
 use App\Models\MarketAnalysis;
 use App\Models\MarketObservation;
 use App\Models\ResearchRequest;
+use App\Services\BeiUniverseRegistry;
+use App\Services\UnifiedAnalysisRendererService;
 use Illuminate\Support\Collection;
 
 class AiConclusionPresenter
@@ -33,7 +35,7 @@ class AiConclusionPresenter
         ?ResearchRequest $activeRequest = null
     ): array {
         $ticker = strtoupper(trim($ticker));
-        $isConstituent = in_array($ticker, self::VALIDATED_CONSTITUENTS, true);
+        $isConstituent = BeiUniverseRegistry::hasProductionMlInference($ticker);
         $hasAnalysis = $latestAnalysis !== null;
         $struct = $latestAnalysis?->structured_output ?? [];
         $isValidIssuer = ($company !== null) || ($ticker === '^JKSE');
@@ -67,7 +69,7 @@ class AiConclusionPresenter
             'bar_date' => $barDate,
             'horizon' => $struct['impact_horizon'] ?? 'Multi_day (+5D)',
             'mode_label' => $modeLabel,
-            'model_name' => $latestAnalysis?->model_name ?? 'ag/gemini-3.8-flash-high',
+            'model_name' => $latestAnalysis?->model_name ?? config('services.consultation_ai.model_id', 'gemini-3.6-flash'),
             'completeness_status' => ! $isValidIssuer
                 ? 'Ticker Tidak Terdaftar'
                 : self::determineCompleteness($hasAnalysis, $fundamentals->isNotEmpty(), $latestObs !== null),
@@ -95,7 +97,7 @@ class AiConclusionPresenter
             $openStr = number_format($latestObs->open_price, 0, ',', '.');
             $volStr = number_format($latestObs->volume, 0, ',', '.');
             $barDateStr = $latestObs->bar_date?->format('d M Y') ?? 'sesi terakhir';
-            $actualSource = $latestObs->source ?? 'Yahoo Finance (data sekunder publik)';
+            $actualSource = $latestObs->source ?? 'IDX Edge PRO (Pasar Reguler)';
 
             $paragraphs[] = "Ringkasan data — bukan analisis Gemini. Belum ada sintesis naratif AI Gemini tersimpan untuk emiten {$ticker}. "
                 ."Berdasarkan data pasar sekunder ({$actualSource}) per {$barDateStr}, harga tercatat Rp {$closeStr} "
@@ -140,11 +142,17 @@ class AiConclusionPresenter
         $sourcesAndLimitations = self::buildSourcesAndLimitations($ticker, $latestObs, $fundamentals, $news, $latestAnalysis);
 
         // 9. Section F: Detail Analisis (Accordion)
+        $auditEvidenceId = $latestAnalysis?->evidence_snapshot_id ?? $struct['evidence_snapshot_id'] ?? null;
+        $auditRequestId = $struct['research_request_id'] ?? null;
         $auditMetadata = [
             'analysis_id' => $latestAnalysis?->id,
-            'evidence_id' => $latestAnalysis?->evidence_snapshot_id ?? $struct['evidence_snapshot_id'] ?? null,
+            'evidence_id' => $auditEvidenceId,
+            'evidence_link_status' => $auditRequestId ? 'REQUEST_SCOPED' : ($auditEvidenceId ? 'LEGACY_LINK_UNVERIFIED' : 'MISSING'),
+            'historical_warning' => $auditEvidenceId && ! $auditRequestId
+                ? 'Historis lama tidak memiliki binding request-scoped. Jangan anggap relasi evidence sebagai terverifikasi.'
+                : null,
             'evidence_hash' => $struct['evidence_hash'] ?? null,
-            'model' => $latestAnalysis?->model_name ?? 'ag/gemini-3.8-flash-high',
+            'model' => $latestAnalysis?->model_name ?? config('services.consultation_ai.model_id', 'gemini/gemini-3.6-flash'),
             'prompt_version' => $latestAnalysis?->prompt_version ?? 'v1.0.0-grounded',
             'latency_ms' => $struct['latency_ms'] ?? null,
             'tokens_used' => $struct['usage']['total_tokens'] ?? null,
@@ -181,6 +189,25 @@ class AiConclusionPresenter
     {
         if (! $analysis) {
             return ['summary_paragraphs' => [], 'facts' => [], 'risks' => []];
+        }
+
+        // Check if v3 canonical_output is available and render via UnifiedAnalysisRendererService
+        $canonical = $analysis->structured_output['canonical_output'] ?? null;
+        if (is_array($canonical)) {
+            $rendered = app(UnifiedAnalysisRendererService::class)->renderToText($canonical, 'DASHBOARD');
+            $summary = ! empty($canonical['summary']) ? [$canonical['summary']] : [self::cleanText($rendered)];
+            $facts = [];
+            foreach (($canonical['component_results'] ?? []) as $cName => $cRes) {
+                $st = $cRes['status'] ?? 'UNKNOWN';
+                $facts[] = "Komponen {$cName}: status {$st}";
+            }
+            $risks = $canonical['limitations'] ?? [];
+
+            return [
+                'summary_paragraphs' => $summary,
+                'facts' => $facts,
+                'risks' => $risks,
+            ];
         }
 
         $text = $analysis->structured_output['generated_narrative'] ?? $analysis->market_regime_summary ?? '';
@@ -387,7 +414,7 @@ class AiConclusionPresenter
             : 'NON_UNIVERSE_INSTRUMENT';
 
         // 2. Inference status for this specific bar
-        $hasActiveInferenceForBar = ($barSignal !== null);
+        $hasActiveInferenceForBar = $isConstituent && ($barSignal !== null);
 
         // 3. Direction / Signal status
         if (! $isConstituent) {
@@ -420,7 +447,9 @@ class AiConclusionPresenter
             $explanation = 'Inferensi model '.($barSignal->model_version ?? 'RandomForest_v1.0').' dijalankan untuk bar '.$barDateStr.'. Evaluasi threshold menghasilkan status '.$signalStatus.'.';
         }
 
-        $modelArtifact = $barSignal?->model_version ?? 'RandomForest_v1.0';
+        $modelArtifact = $hasActiveInferenceForBar && $barSignal?->model_version
+            ? $barSignal->model_version
+            : 'N/A (artefak produksi belum tersedia)';
 
         return [
             'is_constituent' => $isConstituent,
@@ -451,7 +480,7 @@ class AiConclusionPresenter
 
         // Market data source
         if ($obs) {
-            $sourceName = $obs->source ?? 'Yahoo Finance (data sekunder publik)';
+            $sourceName = $obs->source ?? 'IDX Edge PRO (Pasar Reguler)';
             $isYahoo = str_contains(strtolower($sourceName), 'yahoo');
             $sources[] = [
                 'name' => $sourceName,

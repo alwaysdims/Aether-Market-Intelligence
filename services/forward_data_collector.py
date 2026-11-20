@@ -66,90 +66,15 @@ class ForwardDataCollector:
             "details": {}
         }
 
-        # Multi-symbol download with 3-attempt backoff
-        for attempt in range(1, 4):
-            try:
-                tickers_str = " ".join(symbols)
-                raw_df = yf.download(
-                    tickers_str,
-                    period="5d",
-                    interval="1d",
-                    group_by="ticker",
-                    auto_adjust=False,
-                    threads=True,
-                    progress=False
-                )
-                if raw_df is not None and not raw_df.empty:
-                    break
-            except Exception as e:
-                time.sleep(attempt * 2.0)
-        else:
-            report["error"] = "Failed to download EOD data after 3 attempts"
-            return report
-
-        # Process each symbol
-        for sym in symbols:
-            clean_ticker = sym.replace(".JK", "")
-            try:
-                if len(symbols) > 1 and sym in raw_df.columns.levels[0]:
-                    sym_df = raw_df[sym].dropna(subset=["Close"]).copy()
-                else:
-                    sym_df = raw_df.dropna(subset=["Close"]).copy()
-
-                if sym_df.empty:
-                    report["details"][clean_ticker] = {"status": "EMPTY"}
-                    report["symbols_failed"] += 1
-                    continue
-
-                latest_bar = sym_df.iloc[-1]
-                bar_date = sym_df.index[-1].strftime("%Y-%m-%d")
-
-                # Physical sanity checks
-                o, h, l, c, v = float(latest_bar["Open"]), float(latest_bar["High"]), float(latest_bar["Low"]), float(latest_bar["Close"]), float(latest_bar["Volume"])
-                if l > min(o, c) or h < max(o, c) or l <= 0 or c <= 0:
-                    report["details"][clean_ticker] = {"status": "PHYSICAL_INVALID", "bar_date": bar_date}
-                    report["symbols_failed"] += 1
-                    continue
-
-                # Save raw immutable JSON
-                raw_record = {
-                    "symbol": sym,
-                    "ticker": clean_ticker,
-                    "bar_date": bar_date,
-                    "open": o,
-                    "high": h,
-                    "low": l,
-                    "close": c,
-                    "volume": v,
-                    "event_time": f"{bar_date}T16:00:00+07:00",
-                    "published_at": f"{bar_date}T16:05:00+07:00",
-                    "first_seen_at": now_dt.isoformat(),
-                    "available_at": now_dt.isoformat(),
-                    "source": "Yahoo Finance v8 / yfinance",
-                    "adjustment": "split_adjusted"
-                }
-                raw_path = snapshot_dir / f"{clean_ticker}_{bar_date}.json"
-                with open(raw_path, "w", encoding="utf-8") as f:
-                    json.dump(raw_record, f, indent=2)
-
-                # Update cleaned CSV with idempotency & quarantine
-                clean_path = CLEANED_DIR / f"{clean_ticker}_cleaned.csv"
-                cls._merge_clean_bar(clean_path, raw_record)
-
-                report["symbols_success"] += 1
-                report["details"][clean_ticker] = {
-                    "status": "SUCCESS",
-                    "bar_date": bar_date,
-                    "close": c,
-                    "volume": v,
-                    "raw_file": str(raw_path)
-                }
-
-            except Exception as ex:
-                report["symbols_failed"] += 1
-                report["details"][clean_ticker] = {"status": "ERROR", "message": str(ex)}
-
-        return report
+        # Pengambilan data jaringan Yahoo Finance dinonaktifkan permanen.
+        # Seluruh data harga, histori, dan OHLCV dialihkan ke IDX Edge PRO.
+        return {
+            "status": "DEPRECATED_AND_DISABLED",
+            "error": "Jalur pengambilan jaringan Yahoo Finance dinonaktifkan. Gunakan IDX Edge PRO.",
+            "success": False,
+            "symbols_failed": len(symbols),
+            "details": {}
+        }
 
     @classmethod
     def _merge_clean_bar(cls, clean_path: Path, raw_record: Dict[str, Any]) -> None:

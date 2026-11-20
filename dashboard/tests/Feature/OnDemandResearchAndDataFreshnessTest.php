@@ -61,7 +61,11 @@ class OnDemandResearchAndDataFreshnessTest extends TestCase
             'low_price' => 254.0,
             'close_price' => 260.0,
             'volume' => 32107600,
-            'source' => 'Yahoo Finance (via yfinance)',
+            'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'is_eod_final' => true,
             'validation_status' => 'VALID',
         ]);
@@ -113,7 +117,11 @@ class OnDemandResearchAndDataFreshnessTest extends TestCase
             'low_price' => 4950.0,
             'close_price' => 5050.0,
             'volume' => 1000000,
-            'source' => 'Yahoo Finance',
+            'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'is_eod_final' => true,
             'validation_status' => 'VALID',
         ]);
@@ -209,7 +217,11 @@ class OnDemandResearchAndDataFreshnessTest extends TestCase
             'low_price' => 4900.0,
             'close_price' => 5000.0,
             'volume' => 1000000,
-            'source' => 'Yahoo Finance',
+            'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'validation_status' => 'VALID',
         ]);
 
@@ -257,6 +269,42 @@ class OnDemandResearchAndDataFreshnessTest extends TestCase
         $this->assertNotNull($outbox);
         $this->assertEquals('801', $outbox->reply_to_message_id);
         $this->assertEquals('QUEUED', $outbox->status);
+        $this->assertNotNull(data_get($req->research_metadata, 'refresh.bar.raw_payload_hash'));
+        $this->assertNotNull(data_get($req->research_metadata, 'refresh.metrics.status'));
+        $this->assertNotNull(data_get($req->research_metadata, 'refresh.broker.status'));
+    }
+
+    public function test_two_same_ticker_requests_keep_distinct_request_scoped_evidence(): void
+    {
+        $first = ResearchRequest::create([
+            'request_id' => 'REQ_TEST_SAME_TICKER_1',
+            'ticker' => 'UNVR',
+            'company_name' => 'PT Unilever Indonesia Tbk',
+            'exchange' => 'IDX',
+            'analysis_type' => 'current_condition',
+            'data_type_requested' => 'eod',
+            'as_of_time' => now('Asia/Jakarta'),
+            'status' => 'pending',
+        ]);
+        $second = ResearchRequest::create([
+            'request_id' => 'REQ_TEST_SAME_TICKER_2',
+            'ticker' => 'UNVR',
+            'company_name' => 'PT Unilever Indonesia Tbk',
+            'exchange' => 'IDX',
+            'analysis_type' => 'current_condition',
+            'data_type_requested' => 'eod',
+            'as_of_time' => now('Asia/Jakarta'),
+            'status' => 'pending',
+        ]);
+
+        $firstEvidence = $this->collector->collectAndStore('UNVR', $first->request_id)['evidence'];
+        $secondEvidence = $this->collector->collectAndStore('UNVR', $second->request_id)['evidence'];
+
+        $this->assertNotSame($firstEvidence->id, $secondEvidence->id);
+        $this->assertSame($first->request_id, data_get($firstEvidence->features_snapshot, 'research_request_id'));
+        $this->assertSame($second->request_id, data_get($secondEvidence->features_snapshot, 'research_request_id'));
+        $this->assertSame('REQUEST_SCOPED', data_get($firstEvidence->features_snapshot, 'evidence_binding'));
+        $this->assertSame('REQUEST_SCOPED', data_get($secondEvidence->features_snapshot, 'evidence_binding'));
     }
 
     public function test_telegram_two_way_routing_for_expanded_universe(): void

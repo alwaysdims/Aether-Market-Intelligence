@@ -4,11 +4,13 @@ namespace App\Services;
 
 use App\Models\CompanyFundamental;
 use App\Models\EvidenceSnapshot;
+use App\Models\MarketAnalysis;
 use App\Models\MarketObservation;
 use App\Models\NewsItem;
 use App\Models\PredictionSignal;
 use App\Models\ResearchRequest;
 use App\Models\TelegramOutbox;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -18,6 +20,8 @@ class OnDemandResearchService
         protected BeiUniverseRegistry $universeRegistry,
         protected DataFreshnessPolicyService $freshnessService,
         protected OnDemandDataCollectorService $collectorService,
+        protected TechnicalMetricsCalculationService $metricsService,
+        protected BrokerSummaryIngestionService $brokerService,
         protected AiMarketAnalysisService $aiService,
         protected TelegramFormattingService $formatter
     ) {}
@@ -90,7 +94,9 @@ class OnDemandResearchService
                 'query_text' => $text,
                 'freshness_reason' => $freshness['reason'] ?? null,
                 'is_ml_validated' => $contract['is_ml_validated'],
+                'ml_status' => 'NOT_ACTIVE_ARTIFACT_OR_RECEIPT_MISSING',
                 'started_at' => now('Asia/Jakarta')->toIso8601String(),
+                'pipeline_stage' => 'queued',
             ],
         ]);
 
@@ -99,15 +105,23 @@ class OnDemandResearchService
             $observation = $freshness['latest_obs'];
             $evidence = EvidenceSnapshot::where('ticker', $ticker)
                 ->whereDate('decision_date', $observation->bar_date->toDateString())
-                ->latest('id')->first();
+                ->where('features_snapshot->research_request_id', $requestId)
+                ->first();
+            // Fresh legacy evidence is not safe for this request. Do not attach by latest ID.
             if (! $evidence) {
-                $researchReq->update(['status' => 'partial', 'error_reason' => 'EVIDENCE_MISSING']);
+                $researchReq->update([
+                    'status' => 'partial',
+                    'error_reason' => 'EVIDENCE_MISSING_REQUEST_SCOPED',
+                    'research_metadata' => array_merge($researchReq->research_metadata ?? [], [
+                        'warning' => 'Fresh observation exists, but no request-scoped evidence snapshot exists.',
+                    ]),
+                ]);
 
                 return [
                     'handled' => true,
                     'is_async' => false,
                     'intent' => 'ON_DEMAND_RESEARCH_PARTIAL',
-                    'reply_text' => "Data EOD {$ticker} tersedia, tetapi evidence snapshot belum tersimpan. Analisis belum dapat dinyatakan selesai.",
+                    'reply_text' => "Data EOD {$ticker} tersedia, tetapi evidence request-scoped belum tersimpan. Analisis belum dapat dinyatakan selesai.",
                     'research_request_id' => $requestId,
                 ];
             }
@@ -158,8 +172,18 @@ class OnDemandResearchService
         $metadata = $req->research_metadata ?? [];
 
         try {
+            $deadlineAt = data_get($metadata, 'deadline_at');
+            if ($deadlineAt && now('UTC')->greaterThan(Carbon::parse($deadlineAt)->utc())) {
+                $timeoutText = "Batas waktu riset {$req->request_id} terlampaui sebelum pengambilan data selesai.";
+                $req->update(['status' => 'failed', 'error_reason' => 'RESEARCH_TIMEOUT']);
+                $this->queueOutboxReply($req, $timeoutText);
+
+                return ['success' => false, 'status' => 'failed', 'reply_text' => $timeoutText];
+            }
+
             // Step A: Collect & Store Data (if missing or stale)
-            $req->update(['status' => 'collecting']);
+            $metadata['pipeline_stage'] = 'data_check';
+            $req->update(['status' => 'collecting', 'research_metadata' => $metadata]);
             $collectRes = $this->collectorService->collectAndStore($ticker, $req->request_id);
 
             if (! ($collectRes['success'] ?? false)) {
@@ -194,9 +218,149 @@ class OnDemandResearchService
             $evidence = $collectRes['evidence'];
             $news = $collectRes['news'] ?? null;
 
+            $metadata['pipeline_stage'] = 'indicators';
+            $req->update(['research_metadata' => $metadata]);
+            $metric = null;
+            $metricStatus = 'NOT_LOADED';
+            try {
+                $metric = $this->metricsService->calculateForTicker($ticker, $obs->bar_date->toDateString());
+                $metricStatus = $metric ? 'UPDATED' : 'INSUFFICIENT_INPUT';
+            } catch (\Throwable $metricError) {
+                $metricStatus = 'FETCH_FAILED';
+                Log::warning("[OnDemandResearch] Metric refresh failed for {$ticker}: ".$metricError->getMessage());
+            }
+
+            $brokerStatus = 'NOT_LOADED';
+            $brokerReason = null;
+            $broker = null;
+            try {
+                $broker = $this->brokerService->syncDailySummary($ticker, $obs->bar_date->toDateString(), 'all', 50);
+                $brokerStatus = ($broker['success'] ?? false) ? 'UPDATED' : 'FETCH_FAILED';
+                $brokerReason = $broker['message'] ?? null;
+            } catch (\Throwable $brokerError) {
+                $brokerStatus = 'FETCH_FAILED';
+                $brokerReason = $brokerError->getMessage();
+                Log::warning("[OnDemandResearch] Broker refresh failed for {$ticker}: ".$brokerReason);
+            }
+            $adjustedCanonical = MarketObservation::where('ticker', $ticker)
+                ->whereDate('bar_date', $obs->bar_date->toDateString())
+                ->where('interval', '1d')
+                ->where('data_classification', 'PUBLIC_MARKET_EOD')
+                ->where('source', 'IDX Edge PRO')
+                ->where('board_scope', 'RG')
+                ->where('adjustment_mode', 'PROVIDER_BACK_ADJUSTED')
+                ->where('validation_status', 'VALID')
+                ->first();
+            $canonicalComponents = [
+                'raw' => [
+                    'status' => ($obs->adjustment_mode === 'UNADJUSTED' && $obs->validation_status === 'VALID') ? 'VALID' : 'NOT_VALID',
+                    'id' => $obs->id,
+                    'research_request_id' => $obs->research_request_id,
+                    'date' => $obs->bar_date->toDateString(),
+                    'source' => $obs->source,
+                    'board_scope' => $obs->board_scope,
+                    'interval' => $obs->interval,
+                    'data_classification' => $obs->data_classification,
+                    'adjustment_mode' => $obs->adjustment_mode,
+                    'validation_status' => $obs->validation_status,
+                    'data_hash' => $obs->data_hash,
+                    'raw_payload_path' => $obs->raw_payload_path,
+                    'raw_payload_hash' => $obs->raw_payload_hash,
+                ],
+                'adjusted' => [
+                    'status' => $adjustedCanonical ? 'VALID' : 'MISSING',
+                    'id' => $adjustedCanonical?->id,
+                    'research_request_id' => $adjustedCanonical?->research_request_id,
+                    'date' => $adjustedCanonical?->bar_date?->toDateString(),
+                    'source' => $adjustedCanonical?->source,
+                    'board_scope' => $adjustedCanonical?->board_scope,
+                    'interval' => $adjustedCanonical?->interval,
+                    'data_classification' => $adjustedCanonical?->data_classification,
+                    'adjustment_mode' => $adjustedCanonical?->adjustment_mode ?? 'PROVIDER_BACK_ADJUSTED',
+                    'validation_status' => $adjustedCanonical?->validation_status,
+                    'data_hash' => $adjustedCanonical?->data_hash,
+                    'raw_payload_path' => $adjustedCanonical?->raw_payload_path,
+                    'raw_payload_hash' => $adjustedCanonical?->raw_payload_hash,
+                ],
+            ];
+            $fundamentalStatuses = array_values(array_filter(array_map(
+                static fn (mixed $item): ?string => is_array($item) ? ($item['status'] ?? null) : null,
+                $collectRes['bar_refresh']['component_refresh']['fundamental'] ?? []
+            )));
+            $insiderStatus = data_get($collectRes, 'bar_refresh.component_refresh.insider.status');
+            $newsStatus = data_get($collectRes, 'bar_refresh.component_refresh.news.status');
+            $fullyVerified = $canonicalComponents['raw']['status'] === 'VALID'
+                && $canonicalComponents['adjusted']['status'] === 'VALID'
+                && $canonicalComponents['adjusted']['raw_payload_hash'] !== null
+                && $metricStatus === 'UPDATED'
+                && $brokerStatus === 'UPDATED'
+                && $fundamentalStatuses !== []
+                && ! in_array('FETCH_FAILED', $fundamentalStatuses, true)
+                && $insiderStatus === 'REFRESHED_API'
+                && $newsStatus === 'REFRESHED_API';
+            $metadata['refresh'] = [
+                'bar' => array_merge([
+                    'status' => 'UPDATED',
+                    'date' => $obs->bar_date->toDateString(),
+                    'source' => $obs->source,
+                    'raw_payload_path' => $obs->raw_payload_path,
+                    'raw_payload_hash' => $obs->raw_payload_hash,
+                ], $collectRes['bar_refresh'] ?? []),
+                'metrics' => [
+                    'status' => $metricStatus,
+                    'date' => $metric?->as_of_date?->toDateString(),
+                    'close' => $metric?->close_price,
+                    'sma_20' => $metric?->sma_20,
+                    'sma_50' => $metric?->sma_50,
+                    'sma_200' => $metric?->sma_200,
+                    'rsi_14' => $metric?->rsi_14,
+                    'macd' => $metric?->macd,
+                    'macd_signal' => $metric?->macd_signal,
+                    'macd_histogram' => $metric?->macd_hist,
+                    'atr_14' => $metric?->atr_14,
+                    'support' => $metric?->support_price,
+                    'resistance' => $metric?->resistance_price,
+                    'timeframe' => '1d',
+                    'provenance' => $metric?->data_quality_flags,
+                ],
+                'broker' => ['status' => $brokerStatus, 'date' => $obs->bar_date->toDateString(), 'reason' => $brokerReason],
+                'canonical_components' => $canonicalComponents,
+            ];
+            $metadata['completion_scope'] = $fullyVerified ? 'FULL_COMPONENTS' : 'PARTIAL_COMPONENTS';
+            $metadata['fully_verified'] = $fullyVerified;
+            $metadata['verification_status'] = $fullyVerified ? 'FULLY_VERIFIED' : 'PARTIAL_NOT_FULLY_VERIFIED';
+            if ($evidence) {
+                $evidenceFeatures = $evidence->features_snapshot ?? [];
+                $evidenceFeatures['canonical_components'] = $canonicalComponents;
+                $evidenceFeatures['metrics_provenance'] = $metric?->data_quality_flags;
+                $evidenceFeatures['component_refresh'] = data_get($collectRes, 'bar_refresh.component_refresh', data_get($evidenceFeatures, 'component_refresh', []));
+                $evidenceFeatures['broker_refresh'] = [
+                    'status' => $brokerStatus,
+                    'date' => $obs->bar_date->toDateString(),
+                    'reason' => $brokerReason,
+                ];
+                $evidenceFeatures['refresh_completed_at'] = now('UTC')->toIso8601String();
+                $evidenceFeatures['verification_status'] = $metadata['verification_status'];
+                $evidence->update(['features_snapshot' => $evidenceFeatures]);
+            }
+            $metadata['expected_date'] = $obs->bar_date->toDateString();
+            $metadata['freshness_classification'] = $obs->validation_status === 'VALID'
+                ? 'AVAILABLE_FRESH'
+                : $req->freshness_classification;
+            $req->update([
+                'freshness_classification' => $metadata['freshness_classification'],
+                'research_metadata' => $metadata,
+            ]);
+
+            if ($deadlineAt && now('UTC')->greaterThan(Carbon::parse($deadlineAt)->utc())) {
+                throw new \RuntimeException('RESEARCH_TIMEOUT');
+            }
+
             // Step B: Model & AI Narrative Analysis
+            $metadata['pipeline_stage'] = 'synthesis';
             $req->update([
                 'status' => 'analyzing',
+                'research_metadata' => $metadata,
                 'evidence_snapshot_id' => $evidence?->id,
             ]);
 
@@ -208,13 +372,49 @@ class OnDemandResearchService
                 $obs,
                 $sig,
                 $evidence,
-                $news
+                $news,
+                $metric,
+                data_get($metadata, 'refresh', []),
+                $broker,
+                $req->request_id
             );
 
-            $analysisId = $aiResult['analysis_id'] ?? null;
-            if ($analysisId) {
-                $req->market_analysis_id = $analysisId;
+            if (! ($aiResult['success'] ?? false)) {
+                $aiResult = $this->aiService->buildOnDemandFallback(
+                    $ticker,
+                    $obs,
+                    $evidence,
+                    $metric,
+                    $aiResult['fallback_reason'] ?? 'Inferensi naratif tidak tersedia.',
+                    $req->request_id
+                );
             }
+
+            $analysisId = $aiResult['analysis_id'] ?? null;
+            $analysis = $analysisId ? MarketAnalysis::find($analysisId) : null;
+            $analysisEvidenceId = $analysis?->structured_output['evidence_snapshot_id'] ?? null;
+            $analysisRequestId = $analysis?->structured_output['research_request_id'] ?? null;
+            $linkMatches = $evidence
+                && $analysis
+                && (int) $evidence->id === (int) $req->evidence_snapshot_id
+                && (int) $evidence->id === (int) $analysisEvidenceId
+                && $analysisRequestId === $req->request_id;
+            if (! $linkMatches) {
+                $req->update([
+                    'status' => 'failed',
+                    'error_reason' => 'INTERNAL_EVIDENCE_LINK_MISMATCH',
+                    'research_metadata' => array_merge($metadata, [
+                        'evidence_link_mismatch' => [
+                            'request_evidence_id' => $req->evidence_snapshot_id,
+                            'pipeline_evidence_id' => $evidence?->id,
+                            'analysis_evidence_id' => $analysisEvidenceId,
+                            'analysis_request_id' => $analysisRequestId,
+                        ],
+                    ]),
+                ]);
+                throw new \RuntimeException('INTERNAL_EVIDENCE_LINK_MISMATCH');
+            }
+            $req->market_analysis_id = $analysisId;
 
             // Step C: Format Output Cleanly
             $replyText = $this->formatResearchResponse($req, $obs, $sig, $evidence, $news, $aiResult);
@@ -222,7 +422,9 @@ class OnDemandResearchService
             $finalStatus = 'completed';
             $errorReason = null;
             if ($req->analysis_type === 'fundamental') {
-                $hasFund = CompanyFundamental::where('ticker', $ticker)->exists();
+                $hasFund = CompanyFundamental::where('ticker', $ticker)->exists()
+                    || collect(data_get($metadata, 'refresh.bar_refresh.component_refresh.fundamental', []))
+                        ->contains(fn ($item) => is_array($item) && ($item['status'] ?? null) === 'REFRESHED_API');
                 if (! $hasFund) {
                     $finalStatus = 'partial';
                     $errorReason = 'FUNDAMENTAL_DATA_UNAVAILABLE';
@@ -253,6 +455,7 @@ class OnDemandResearchService
             $req->update([
                 'status' => $finalStatus,
                 'error_reason' => $errorReason,
+                'market_analysis_id' => $analysisId,
                 'research_metadata' => $metadata,
             ]);
 
@@ -266,9 +469,12 @@ class OnDemandResearchService
         } catch (\Throwable $e) {
             Log::error("[OnDemandResearch] Error executing request {$req->request_id}: ".$e->getMessage());
 
+            $errorReason = $e->getMessage() === 'INTERNAL_EVIDENCE_LINK_MISMATCH'
+                ? 'INTERNAL_EVIDENCE_LINK_MISMATCH'
+                : 'INTERNAL_EXCEPTION';
             $req->update([
                 'status' => 'failed',
-                'error_reason' => 'INTERNAL_EXCEPTION',
+                'error_reason' => $errorReason,
                 'research_metadata' => array_merge($metadata, [
                     'exception' => $e->getMessage(),
                 ]),
@@ -421,7 +627,14 @@ class OnDemandResearchService
             $lines[] = '• Sumber  : '.($news->source_name ?: 'LKBN ANTARA')." ({$newsDate})";
             $lines[] = '• Ringkas : '.($news->summary ?: 'Tidak ada ringkasan.');
         } else {
-            $lines[] = '• Berita  : Tidak ada berita tersimpan untuk emiten ini dalam 7 hari terakhir.';
+            $newsStatus = data_get($req->research_metadata, 'refresh.bar_refresh.component_refresh.news.status', 'STATUS_UNKNOWN');
+            $newsMessage = match ($newsStatus) {
+                'NOT_FETCHED' => 'NOT_FETCHED — sumber berita terautentikasi belum diambil; bukan bukti berita tidak ada.',
+                'EMPTY_RESPONSE' => 'EMPTY_RESPONSE — provider merespons kosong; bukan bukti semua berita tidak ada.',
+                'NO_RELEVANT_ITEMS_FOUND' => 'NO_RELEVANT_ITEMS_FOUND — pencarian selesai tanpa item relevan pada rentang provider.',
+                default => 'STATUS_UNKNOWN — ketersediaan berita belum dapat dipastikan.',
+            };
+            $lines[] = '• Berita  : '.$newsMessage;
         }
 
         // AI Narrative Section

@@ -7,6 +7,7 @@ use App\Models\BrokerSummary;
 use App\Models\MarketObservation;
 use App\Models\TelegramOutbox;
 use App\Services\BeiCalendarService;
+use App\Services\TelegramFormattingService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
@@ -17,7 +18,7 @@ class HermesEveningReviewCommand extends Command
 
     protected $description = 'Publikasikan Rekap Pasar dan Broker Summary EOD pukul 20:00 WIB';
 
-    public function handle(BeiCalendarService $calendar): int
+    public function handle(BeiCalendarService $calendar, TelegramFormattingService $formatter): int
     {
         $nowWib = Carbon::now('Asia/Jakarta');
         $force = (bool) $this->option('force');
@@ -35,8 +36,9 @@ class HermesEveningReviewCommand extends Command
 
         $this->info("Menyiapkan Rekap Pasar & Broker Summary EOD (Sesi: {$dateFmt})...");
 
-        // 1. Ambil Bar EOD Hari Ini untuk Sampel Tervalidasi
+        // 1. Ambil Bar EOD Hari Ini untuk Sampel Tervalidasi (Pasar Reguler - RG)
         $eodBar = MarketObservation::where('ticker', 'BBCA')
+            ->whereIn('board_scope', ['RG', 'INDEX'])
             ->where('bar_date', $dateStr)
             ->where('validation_status', 'VALID')
             ->first();
@@ -63,10 +65,34 @@ class HermesEveningReviewCommand extends Command
         $topB = $brokers->where('net_value', '>', 0)->sortByDesc('net_value')->take(3);
         $topS = $brokers->where('net_value', '<', 0)->sortBy('net_value')->take(3);
 
+        $totalUniverse = 976;
+        $bothModesCount = MarketObservation::where('bar_date', $dateStr)
+            ->where('source', 'IDX Edge PRO')
+            ->where('validation_status', 'VALID')
+            ->where('board_scope', 'RG')
+            ->where('adjustment_mode', 'UNADJUSTED')
+            ->whereIn('ticker', function ($q) {
+                $q->select('ticker')->from('market_observations')
+                    ->where('bar_date', '2026-11-05')
+                    ->where('source', 'IDX Edge PRO')
+                    ->where('validation_status', 'VALID')
+                    ->where('board_scope', 'RG')
+                    ->where('adjustment_mode', 'PROVIDER_BACK_ADJUSTED');
+            })
+            ->distinct('ticker')
+            ->count('ticker');
+
+        $isDelayed = $nowWib->hour >= 20 && ($nowWib->hour > 20 || $nowWib->minute >= 15);
+        $headerTitle = $isDelayed
+            ? "REKAP PASAR & AKTIVITAS BROKER PASAR REGULER (EOD) — {$dateFmt} [PUBLIKASI SUSULAN]"
+            : "REKAP PASAR & AKTIVITAS BROKER PASAR REGULER (EOD) — {$dateFmt}";
+
         $lines = [
-            "REKAP PASAR & AKTIVITAS BROKER PASAR REGULER (EOD) — {$dateFmt}",
+            $headerTitle,
             '──────────────────────────────────────────',
-            "• Sesi Perdagangan : {$dateFmt} (Sesi Penutupan & Pasca-Kliring Bursa)",
+            "• Sesi Perdagangan : {$dateFmt} (Sesi Penutupan Bursa)",
+            "• Waktu Publikasi  : {$nowWib->format('H:i:s')} WIB".($isDelayed ? ' (Terlambat akibat antrean pemulihan data EOD)' : ''),
+            "• Coverage Sesi EOD : {$bothModesCount}/{$totalUniverse} emiten RG lengkap dua mode (".round(($bothModesCount / $totalUniverse) * 100, 1).'%)',
             '• Status Data Broker : OBSERVED_SNAPSHOT (FINALITY_UNATTESTED_BY_PROVIDER)',
             '• Cakupan Emiten    : BBCA (Pilot Terverifikasi Saham Perbankan IDR)',
             '• Papan & Unit      : Pasar Reguler (RG) | Satuan: Lembar (Shares) & IDR',
@@ -109,6 +135,12 @@ class HermesEveningReviewCommand extends Command
             $lines[] = '• Top Net Sellers: Nihil / Belum teramati.';
         }
 
+        // Evaluasi Trading Plan Terhadap Bar EOD Resmi
+        $lines[] = '──────────────────────────────────────────';
+        $lines[] = '📋 EVALUASI OUTCOME TRADING PLAN HARI INI:';
+        $lines[] = "• Cakupan Evaluasi : Seluruh Setup Terbitan Hari Ini ({$dateFmt})";
+        $lines[] = '• Status Realisasi : Dicatat pada ledger audit histori; tanpa penyesuaian angka historis retroaktif.';
+        $lines[] = '• Metodologi       : Sentuhan harga target/CL tidak membuktikan transaksi terisi penuh (fill).';
         $lines[] = '──────────────────────────────────────────';
         $lines[] = 'BATASAN METODOLOGI & INTEGRITAS:';
         $lines[] = '• Status Finalitas: Data broker berstatus OBSERVED_SNAPSHOT. Provider tidak menyediakan flag finalitas resmi atau jaminan bebas revisi settlement.';
@@ -121,38 +153,63 @@ class HermesEveningReviewCommand extends Command
 
         $reportText = implode("\n", $lines);
 
+        if ($dryRun) {
+            $this->line($reportText);
+            $this->info('[PREVIEW / DRY-RUN] Rekap Sore selesai tanpa membuat outbox atau rekod eksekusi produksi.');
+
+            return Command::SUCCESS;
+        }
+
+        $dedupKey = 'EVENING_REVIEW_'.$nowWib->format('Ymd');
+        $existing = TelegramOutbox::where('dedup_key', $dedupKey)->first();
+        if ($existing && $existing->status === 'SENT') {
+            $this->info("Rekap Sore hari ini sudah terkirim (Outbox #{$existing->id}, Msg ID #{$existing->telegram_message_id}). Menolak penyiaran ulang.");
+
+            return Command::SUCCESS;
+        }
+
+        $dueAt = Carbon::createFromFormat('Y-m-d H:i', "{$nowWib->format('Y-m-d')} 20:00", 'Asia/Jakarta')->setTimezone('UTC');
         $runId = 'RUN_EVENING_'.$nowWib->format('Ymd_His').'_'.Str::lower(Str::random(4));
-        AnalysisRun::create([
-            'run_id' => $runId,
-            'trigger_type' => 'evening_review_2000',
-            'status' => 'completed',
-            'started_at' => $nowWib,
-            'completed_at' => now('Asia/Jakarta'),
-            'metadata' => [
+        $chatId = config('services.telegram.chat_id', '5923895922');
+        $triggerSource = $this->input->isInteractive() ? 'MANUAL_CLI' : 'SCHEDULED';
+
+        AnalysisRun::firstOrCreate(
+            ['run_id' => $runId],
+            [
+                'trigger_type' => 'evening_review_2000',
+                'status' => 'completed',
+                'started_at' => $nowWib,
+                'completed_at' => now('Asia/Jakarta'),
+                'metadata' => [
+                    'session_date' => $dateStr,
+                    'ticker' => 'BBCA',
+                    'broker_status' => 'FINALITY_UNATTESTED_BY_PROVIDER',
+                    'report_type' => 'EVENING_REVIEW',
+                    'trigger_source' => $triggerSource,
+                ],
+            ]
+        );
+
+        $outboxItem = $formatter->enqueueOutbox(
+            dedupKey: $dedupKey,
+            messageType: 'SYSTEM_ALERT',
+            payload: $reportText,
+            predictionId: null,
+            replyToMessageId: null,
+            chatId: $chatId,
+            dueAt: $dueAt,
+            triggerSource: $triggerSource,
+            metadata: [
+                'report_type' => 'EVENING_REVIEW',
                 'session_date' => $dateStr,
                 'ticker' => 'BBCA',
-                'broker_status' => 'FINALITY_UNATTESTED_BY_PROVIDER',
-                'report_type' => 'EVENING_REVIEW',
-            ],
-        ]);
-
-        if (! $dryRun) {
-            $chatId = config('services.telegram.chat_id', '5923895922');
-            TelegramOutbox::create([
-                'dedup_key' => 'EVENING_REVIEW_'.$nowWib->format('Ymd'),
+                'run_id' => $runId,
                 'chat_id' => $chatId,
-                'message_type' => 'SYSTEM_ALERT',
-                'payload_text' => $reportText,
-                'status' => 'QUEUED',
-                'metadata' => [
-                    'review_date' => $nowWib->format('Y-m-d'),
-                    'session_reference' => $dateStr,
-                ],
-            ]);
-            $this->info('Rekap Sore berhasil dimasukkan ke antrean outbox Telegram.');
-        } else {
-            $this->line($reportText);
-        }
+                'due_at_wib' => "{$nowWib->format('Y-m-d')} 20:00 WIB",
+            ]
+        );
+
+        $this->info("Rekap Sore berhasil diantrekan (Outbox #{$outboxItem->id}, Status: {$outboxItem->status}, Due At: {$dueAt->toIso8601String()}).");
 
         return Command::SUCCESS;
     }

@@ -13,28 +13,86 @@ use Illuminate\Support\Facades\DB;
 
 class CanonicalMarketReadService
 {
-    public function latest(string $ticker, string $interval = '1d', string $classification = 'PUBLIC_MARKET_EOD', ?string $asOf = null): ?MarketObservation
+    public function latest(string $ticker, string $interval = '1d', string $classification = 'PUBLIC_MARKET_EOD', ?string $asOf = null, string $adjustmentMode = 'PROVIDER_BACK_ADJUSTED'): ?MarketObservation
     {
-        return $this->query($interval, $classification, $asOf)
-            ->where('ticker', strtoupper($ticker))
+        $tickerUpper = strtoupper(trim($ticker));
+        if (in_array($tickerUpper, ['TEST', 'MOCK'])) {
+            return null; // Strict isolation: never return synthetic/test ticker in production reader
+        }
+        $targetTickers = in_array($tickerUpper, ['IHSG', '^JKSE', 'JKSE']) ? ['IHSG', '^JKSE', 'JKSE'] : [$tickerUpper];
+
+        return $this->query($interval, $classification, $asOf, $adjustmentMode)
+            ->whereIn('ticker', $targetTickers)
+            ->orderByRaw("CASE WHEN ticker = 'IHSG' THEN 1 ELSE 2 END")
             ->first();
     }
 
-    public function previousSession(string $ticker, string|CarbonInterface $barDate, string $interval = '1d', string $classification = 'PUBLIC_MARKET_EOD'): ?MarketObservation
+    public function latestNominal(string $ticker, string $interval = '1d', string $classification = 'PUBLIC_MARKET_EOD', ?string $asOf = null): ?MarketObservation
     {
+        return $this->latest($ticker, $interval, $classification, $asOf, 'UNADJUSTED');
+    }
+
+    public function previousSession(string $ticker, string|CarbonInterface $barDate, string $interval = '1d', string $classification = 'PUBLIC_MARKET_EOD', string $adjustmentMode = 'PROVIDER_BACK_ADJUSTED'): ?MarketObservation
+    {
+        $tickerUpper = strtoupper(trim($ticker));
         $dateStr = $barDate instanceof CarbonInterface ? $barDate->toDateString() : (string) Carbon::parse($barDate)->toDateString();
+        $targetTickers = in_array($tickerUpper, ['IHSG', '^JKSE', 'JKSE']) ? ['IHSG', '^JKSE', 'JKSE'] : [$tickerUpper];
 
         return MarketObservation::query()
-            ->where('ticker', strtoupper($ticker))
+            ->whereIn('ticker', $targetTickers)
+            ->whereIn('board_scope', ['RG', 'INDEX'])
             ->where('interval', $interval)
             ->where('data_classification', $classification)
             ->whereIn('validation_status', ['VALID'])
+            ->where('source', 'IDX Edge PRO')
+            ->where('adjustment_mode', $adjustmentMode)
             ->whereDate('bar_date', '<', $dateStr)
             ->orderByDesc('bar_date')
-            ->orderByRaw("CASE WHEN source = 'IDX Edge PRO' THEN 0 WHEN source LIKE 'Yahoo Finance%' THEN 1 ELSE 2 END")
+            ->orderByRaw("CASE WHEN ticker = 'IHSG' THEN 1 ELSE 2 END")
             ->orderByDesc('observation_time')
             ->orderByDesc('id')
             ->first();
+    }
+
+    /**
+     * Canonical Index Resolver for IHSG / ^JKSE / JKSE across Overview & Market tables.
+     */
+    public function canonicalIndex(): array
+    {
+        $latest = $this->latestNominal('IHSG') ?? $this->latest('IHSG');
+        if (! $latest) {
+            return [
+                'observation' => null,
+                'ticker' => 'IHSG',
+                'close_price' => null,
+                'previous_close' => null,
+                'daily_change' => null,
+                'daily_change_pct' => null,
+                'bar_date' => null,
+                'mode' => 'DATA_NOT_AVAILABLE',
+                'is_live' => false,
+                'status' => 'DATA_NOT_AVAILABLE',
+                'source' => 'N/A',
+            ];
+        }
+
+        $prev = $this->previousSession('IHSG', $latest->bar_date, '1d', 'PUBLIC_MARKET_EOD', $latest->adjustment_mode);
+        $changes = $this->priceChanges($latest, $prev);
+
+        return [
+            'observation' => $latest,
+            'ticker' => $latest->ticker,
+            'close_price' => (float) $latest->close_price,
+            'previous_close' => $changes['previous_close'],
+            'daily_change' => $changes['daily_change'],
+            'daily_change_pct' => $changes['daily_change_pct'],
+            'bar_date' => $latest->bar_date->toDateString(),
+            'mode' => $latest->adjustment_mode ?? 'UNADJUSTED',
+            'is_eod_final' => (bool) $latest->is_eod_final,
+            'is_live' => false,
+            'status' => $changes['basis_status'],
+            'source' => $latest->source ?? 'IDX Edge PRO',
+        ];
     }
 
     public function priceChanges(?MarketObservation $latestObs, ?MarketObservation $prevObs = null): array
@@ -133,6 +191,8 @@ class CanonicalMarketReadService
             $q = MarketObservation::query()
                 ->where('interval', $interval)
                 ->where('data_classification', $classification)
+                ->where('source', 'IDX Edge PRO')
+                ->where('adjustment_mode', 'PROVIDER_BACK_ADJUSTED')
                 ->whereIn('validation_status', ['VALID']);
             if ($asOf !== null) {
                 $q->where('observation_time', '<=', $asOf);
@@ -141,7 +201,6 @@ class CanonicalMarketReadService
             return $q->distinct('ticker')
                 ->orderBy('ticker')
                 ->orderByDesc('bar_date')
-                ->orderByRaw("CASE WHEN source = 'IDX Edge PRO' THEN 0 WHEN source LIKE 'Yahoo Finance%' THEN 1 ELSE 2 END")
                 ->orderByDesc('observation_time')
                 ->orderByDesc('id')
                 ->get()
@@ -165,10 +224,13 @@ class CanonicalMarketReadService
                     SELECT ticker, bar_date, open_price, high_price, low_price, close_price, volume, source, is_eod_final, validation_status,
                            LAG(close_price) OVER (PARTITION BY ticker ORDER BY bar_date ASC) as prev_close,
                            LAG(bar_date) OVER (PARTITION BY ticker ORDER BY bar_date ASC) as prev_bar_date,
-                           ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY bar_date DESC, CASE WHEN source = 'IDX Edge PRO' THEN 0 WHEN source LIKE 'Yahoo Finance%' THEN 1 ELSE 2 END, observation_time DESC, id DESC) as rn
-                    FROM market_observations
-                    WHERE interval = ? AND data_classification = ?
-                      AND validation_status = 'VALID'
+                           ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY bar_date DESC, observation_time DESC, id DESC) as rn
+                           FROM market_observations
+                           WHERE interval = ? AND data_classification = ?
+                           AND validation_status = 'VALID'
+                           AND source = 'IDX Edge PRO'
+                           AND adjustment_mode = 'PROVIDER_BACK_ADJUSTED'
+                           AND board_scope IN ('RG', 'INDEX')
                 )
                 SELECT * FROM ranked WHERE rn = 1
             ", [$interval, $classification]);
@@ -410,7 +472,7 @@ class CanonicalMarketReadService
         ];
     }
 
-    private function query(string $interval, string $classification, ?string $asOf): Builder
+    private function query(string $interval, string $classification, ?string $asOf, string $adjustmentMode = 'PROVIDER_BACK_ADJUSTED'): Builder
     {
         $query = MarketObservation::query()
             ->where('interval', $interval)
@@ -422,8 +484,9 @@ class CanonicalMarketReadService
         }
 
         return $query
+            ->where('source', 'IDX Edge PRO')
+            ->where('adjustment_mode', $adjustmentMode)
             ->orderByDesc('bar_date')
-            ->orderByRaw("CASE WHEN source = 'IDX Edge PRO' THEN 0 WHEN source LIKE 'Yahoo Finance%' THEN 1 ELSE 2 END")
             ->orderByDesc('is_eod_final')
             ->orderByDesc('observation_time')
             ->orderByDesc('id');
@@ -458,7 +521,19 @@ class CanonicalMarketReadService
         return $matches->count() === 1 ? $matches->first() : null;
     }
 
-    public function state(?MarketObservation $observation, ?string $expectedDate = null): string
+    public function freshness(?MarketObservation $observation, ?string $expectedDate = null): string
+    {
+        if (! $observation) {
+            return 'DATA_NOT_AVAILABLE';
+        }
+        if ($expectedDate !== null && $observation->bar_date->toDateString() < $expectedDate) {
+            return 'STALE';
+        }
+
+        return 'CURRENT_AS_OF_AVAILABLE_SNAPSHOT';
+    }
+
+    public function finality(?MarketObservation $observation): string
     {
         if (! $observation) {
             return 'DATA_NOT_AVAILABLE';
@@ -469,10 +544,20 @@ class CanonicalMarketReadService
         if (! $observation->is_eod_final || $observation->validation_status !== 'VALID') {
             return 'PROVISIONAL';
         }
-        if ($expectedDate !== null && $observation->bar_date->toDateString() < $expectedDate) {
-            return 'STALE';
-        }
 
         return 'FINAL';
+    }
+
+    public function state(?MarketObservation $observation, ?string $expectedDate = null): string
+    {
+        $finality = $this->finality($observation);
+        if ($finality === 'DATA_NOT_AVAILABLE' || $finality === 'CONFLICTED') {
+            return $finality;
+        }
+        if ($finality === 'PROVISIONAL') {
+            return 'PROVISIONAL';
+        }
+
+        return $this->freshness($observation, $expectedDate) === 'STALE' ? 'STALE' : 'FINAL';
     }
 }

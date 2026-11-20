@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\CompanyAnalysisMetric;
 use App\Models\EvidenceSnapshot;
 use App\Models\PredictionSignal;
 use App\Services\BeiCalendarService;
@@ -101,6 +102,24 @@ class MigrateShadowLedgerCommand extends Command
                     );
 
                     // 2. Prediction Signal
+                    $technicalMetric = CompanyAnalysisMetric::where('ticker', $item['ticker'])
+                        ->whereDate('as_of_date', '<=', $decisionDate->format('Y-m-d'))
+                        ->latest('as_of_date')
+                        ->first();
+                    $technicalContext = $technicalMetric ? [
+                        'support_resistance' => [
+                            'support' => $technicalMetric->support_price,
+                            'resistance' => $technicalMetric->resistance_price,
+                            'method' => data_get($technicalMetric->data_quality_flags, 'support_resistance_method', 'rolling_min_max'),
+                            'window' => data_get($technicalMetric->data_quality_flags, 'support_resistance_window_bars', 20),
+                        ],
+                        'timeframe' => data_get($technicalMetric->data_quality_flags, 'interval', '1d'),
+                        'as_of' => $technicalMetric->as_of_date?->toDateString(),
+                        'source' => data_get($technicalMetric->data_quality_flags, 'source', 'IDX Edge PRO'),
+                        'adjustment' => data_get($technicalMetric->data_quality_flags, 'adjustment_mode'),
+                        'calculation_owner' => 'TechnicalMetricsCalculationService',
+                        'ml_separation' => 'TECHNICAL_ENGINE_ONLY',
+                    ] : null;
                     PredictionSignal::create([
                         'prediction_id' => $predId,
                         'ticker' => $item['ticker'],
@@ -125,11 +144,14 @@ class MigrateShadowLedgerCommand extends Command
                         'expires_at' => $expiresAt,
                         'monitoring_status' => $dbMonitoringStatus,
                         'evaluation_status' => $dbEvaluationStatus,
+                        'technical_context' => $technicalContext,
                         'evidence_snapshot_id' => $snapshot->id,
                         'metadata' => [
                             'original_ledger_id' => $predId,
                             'migrated_from' => 'shadow_predictions_ledger.json',
                             'migrated_at' => now()->toISOString(),
+                            'provenance_status' => 'PROVENANCE_UNVERIFIED',
+                            'provenance_note' => 'Ledger JSON bertanggal lampau tanpa bukti stempel waktu eksternal independen (outbox receipt / hash audit trail pihak ketiga sebelum outcome) diklasifikasikan PROVENANCE_UNVERIFIED, bukan FORWARD_SHADOW yang terbukti.',
                         ],
                     ]);
                 });
