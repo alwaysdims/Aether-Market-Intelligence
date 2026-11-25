@@ -1,5 +1,52 @@
 # Laporan Penyelesaian V1 — Aether Market Intelligence
 
+## Addendum — Recovery, Telemetry, dan History Riset AI 22 November 2026
+
+Status: Riset AI dashboard `VERIFIED_OPERATIONAL` untuk hasil tersimpan; Gemini live `PENDING`.
+
+- Request acceptance: `REQ_20261122_181203_BRIS_wbTi`; Evidence `#216`; Analysis `#177`; status `completed`; `duration_ms=35946`; completion `PARTIAL_COMPONENTS`; verification `PARTIAL_NOT_FULLY_VERIFIED`.
+- Metadata inference kini menyimpan `requested_model=ag/gemini-3.8-flash-high`, `returned_model=null`, correlation ID `AI_20261122_111210_682ac1b5`, `duration_ms=30017`, request `17486` bytes, input `15686` chars, output `0` bytes, deadline `2026-11-22T11:12:40+00:00`, exception `Illuminate\\Http\\Client\\ConnectionException`, previous exception `GuzzleHttp\\Exception\\NetworkTimeoutException`, dan sanitized cURL error.
+- Timeout terklasifikasi sebagai `UPSTREAM_CONNECTION_FAILURE_UNCLASSIFIED`, bukan otomatis `TIMEOUT`. Bukti aktual: cURL error 28, operasi timeout setelah `30010 milliseconds`, `0 bytes received`, `connect_ms=0`, `first_byte_ms=0`, `http_status=null`. Penyebab spesifik connect timeout, read timeout, atau deadline worker belum terbukti. Status: `CAUSE_NOT_VERIFIED`.
+- Fallback tidak lagi melaporkan `ai_latency_ms=0`; latency percobaan tersimpan terpisah dari `fallback_latency_ms`. `returned_model` tetap null.
+- Recovery `/research?request_id=...` memakai query ID, fetch dengan `X-Aether-Research-Auth`, pesan `REQUEST_ACCESS_DENIED` untuk guard failure, dan berhenti saat status terminal. Legacy layout polling tidak lagi berjalan pada `/research`.
+- Browser live acceptance: satu fetch status, status `Selesai`, 8 kartu hasil, console bersih, reload mempertahankan result cards, terminal request tidak polling ulang. Kartu menunjukkan `INFERENCE_UNAVAILABLE`, entry/stop/target/risk `N/A`, tanpa target karangan.
+- Financial card cocok snapshot: `laba_rugi` `1.955.610.000.000`, `Q2 2026`; periode diurutkan berdasarkan tahun/kuartal/tanggal, bukan urutan array. Source `IDX_EDGE`; currency dan scale `N/A` karena provider tidak menyediakannya. Technical dan broker cocok snapshot request.
+- `/history` live menampilkan `ONDEMAND_FALLBACK_BRIS_20261122_111240735`; hasil tersimpan terbaca tanpa provider call atau inference baru. Evaluasi opsional tetap `UNREADABLE_OR_NOT_AVAILABLE` dan tidak mengosongkan History.
+- Regression verification: PHP lint lulus, Blade cache lulus, focused suite `27 tests, 123 assertions` lulus, `git diff --check` lulus.
+- Screenshot kartu: `C:\Users\ASUS\AppData\Local\hermes\cache\screenshots\browser_screenshot_4003474706c844a6a6add125fa894c36.png`.
+- Scope tidak berubah: ML, EOD, Running Trade, Screener, Telegram, ACL, scheduler, dan Outbox tidak disentuh.
+- Residual: Gemini inference masih pending karena upstream timeout; root cause transport belum terisolasi; currency/scale provider belum tersedia; History evaluasi opsional belum readable; mobile acceptance belum dijalankan.
+
+## Addendum — Perbaikan Isi dan Format Riset AI 22 November 2026
+
+
+- Audit `REQ_20261122_151724_BRIS_QL4L` tidak mengubah histori. Evidence `210` dan Analysis `174` terikat request, tetapi narasi Gemini menyebut `Posisi rugi bersih` tanpa akun laba/rugi dan periode pendukung. Exact cause: prompt mengubah PER null menjadi `N/A (Rugi Bersih)` pada `AiMarketAnalysisService.php`; provider snapshot sebenarnya memuat `laba_rugi` positif.
+- Panel financial salah menyatakan laporan gagal. Exact cause: renderer membaca `refresh.bar_refresh...`, sedangkan metadata tersimpan di `refresh.bar.component_refresh...`; renderer juga hanya menerima list `items`, bukan keyed/list envelope provider.
+- Plan kosong saat ML inactive. Exact cause: renderer menghapus plan ketika model name fallback/ML tidak tervalidasi. Perbaikan memisahkan status ML dari validasi plan Gemini dan menolak entry 1.260/stop 970 karena risiko sekitar 23,02%, bukan mengosongkan karena ML.
+- Support/resistance 970/1.260 berasal dari rolling `rolling_min_max`, window 20 bar, timeframe `1d`, adjustment dan tanggal metrik. High/low 1.125/1.180 berasal satu sesi 20 November 2026. Renderer kini menampilkan sumber, tanggal, timeframe, metode, dan window.
+- Broker snapshot request menggunakan `2026-11-14..2026-11-20`, `flow=all`, `net=true`, `broker_limit=50`, `level_limit=25`, `all_data=false`. Provider tidak memberi sesi tercakup. Renderer menyebut subset/provider scope, bukan net seluruh pasar.
+- Perubahan source: `dashboard/app/Services/AiMarketAnalysisService.php`, `OnDemandResearchService.php`, `IdxEdgeCapabilityParser.php`, `resources/views/dashboard/research.blade.php`, dan `tests/Unit/IdxEdgeCapabilityParserTest.php`.
+- Keyed report parser kini menerima envelope `reports`, mempertahankan missing account sebagai missing, dan tidak mengarang currency/scale.
+- Pertanyaan pengguna kini diteruskan ke prompt AI. Fallback menampilkan status model terpisah dan tidak membuat target tanpa evidence.
+- Request baru `REQ_20261122_160052_BRIS_9Ft4` selesai `completed`, Evidence `212`, Analysis `175`. Tiga laporan financial `REFRESHED_API`, masing-masing 12 item; technical metrics tersimpan; broker archive/hash tersimpan; question tersimpan. Gemini mengalami timeout dan fallback terstruktur dipakai. Ini membuktikan jalur penyimpanan dan renderer, bukan keberhasilan inference Gemini.
+- Request ulangan sebelumnya `REQ_20261122_155658_BRIS_tBNC` gagal karena bug telemetry `Undefined property: GuzzleHttp\\Exception\\NetworkTimeoutException::$class`; bug diperbaiki dengan `get_class($e)`. Request lama tetap tidak diubah.
+- Tests setelah perbaikan parser: keyed financial parser `1 test, 4 assertions` lulus. Sebelum bug telemetry ditemukan, suite `31 tests, 172 assertions` lulus; rerun parser awal gagal karena fixture keyed tidak memiliki `count`, lalu parser diperbaiki.
+- Batasan: request terbaru fallback, bukan Gemini HTTP 200; news belum diambil; completion tetap `PARTIAL_COMPONENTS`; ML tetap terpisah dan tidak tervalidasi. Tidak mengubah ML, Running Trade, Screener, EOD, scheduler, Telegram, ACL, atau Outbox #5.
+
+## Addendum — Closure Riset AI dan History 22 November 2026
+
+- History kosong terbukti akibat eager-load `post_horizon_evaluations` yang gagal: `SQLSTATE[42501] permission denied for table post_horizon_evaluations`.
+- Query History kini memuat `marketAnalyses` tanpa relasi evaluasi opsional. Runtime `/history` HTTP `200` menampilkan record setelah reload; empty-state hilang; JSON mentah tetap tersembunyi.
+- Runtime DB audit membuktikan hak SELECT aktif pada tabel yang diaudit. Tidak ada GRANT atau REVOKE dijalankan.
+- Telemetry consultation ditambah: correlation ID, requested model, deadline, exception class, previous exception, HTTP status, sanitized transport error, connect/first-byte/total timing.
+- Jalur aktif tetap `ag/gemini-3.8-flash-high`. Inference baru belum dinyatakan lulus; `/v1/models` reachable bukan bukti inference.
+- Request worker baru `REQ_20261122_151555_BBCA_j84f` selesai `completed` dengan Evidence `209`, Analysis `173`, bar `2026-11-20`, technical calculated, broker periode `2026-11-14..2026-11-20`, dan tiga laporan financial tersimpan.
+- Consultation probe `AI_20261122_081730_fd48b649` menerima HTTP `200`; duration `27298 ms`; connect `1 ms`; first byte `27295 ms`; total `27297 ms`; exception chain dan sanitized transport error kosong. Request diterima router dan selesai ke upstream.
+- Completion tetap `PARTIAL_COMPONENTS` karena news `NOT_FETCHED`; verification `PARTIAL_NOT_FULLY_VERIFIED`. Returned model real tersimpan pada jalur worker; health legacy dan consultation tetap dilaporkan terpisah.
+- History reload terbukti menampilkan hasil tersimpan tanpa provider call baru. Evaluasi post-horizon tetap `UNREADABLE_OR_NOT_AVAILABLE` bila relasi opsional gagal; tidak mengosongkan History utama.
+- HTTP runtime identity terbukti `project_bot_recovered_20261115_022935`, `aether_ingestion`, `public`, search path `public`. CLI tinker memakai DB berbeda (`project-bot`) dan tidak dipakai sebagai bukti HTTP.
+- Screener fixture populated lulus focused tests; live tetap `PROVIDER_EMPTY`. Telegram test baru tetap `PENDING`; Running Trade tetap `DEGRADED / STALE_NO_HEARTBEAT`. Tidak ada collector kedua, replay, atau pesan Telegram baru.
+
 Tanggal pemeriksaan akhir: 13 November 2026, 10:55 WIB (SEAST)
 Ruang lingkup: `E:\Aether-Market-Intelligence` saja. `E:\aether-v2` tidak disentuh.
 
@@ -1757,7 +1804,13 @@ Status penggunaan besok: `CORE_READY_WITH_EXPLICIT_LIMITS`. Sistem inti dapat di
 - News candidate: `5` row, `5` URL unik, provenance raw/timestamp lengkap pada audit sebelumnya. Ingestion berikutnya tetap bergantung pada ACL writer yang sudah dibatasi.
 - Broker BBCA tetap canary saja. Full-universe broker freshness dan coverage belum terbukti.
 - WebSocket tetap `DATA_CAPABILITY_BLOCKED`; board RG, timestamp exchange, trade ID, replay, dan coverage intraday belum terbukti. Jangan gunakan untuk scalping.
-- ML produksi tetap tidak tersedia: `model_rf.pkl` dan `manifest.json` tidak ditemukan pada path terdokumentasi. Jangan tampilkan probabilitas/confidence ML.
+- ML produksi tetap tidak tersedia. Eksperimen terpisah kini berjalan hanya untuk BBCA melalui artifact v2 lengkap; probabilitas eksperimen selalu diberi label keluaran model, bukan akurasi atau win rate.
+- Uji Artisan lama menghasilkan receipt pada `project-bot/postgres`; receipt itu tidak dipakai sebagai deployment proof dan tidak direplay.
+- Uji launcher resmi memakai `project_bot_recovered_20261115_022935/aether_ingestion`; provider raw/adjusted HTTP `200`, bar `2026-11-23`, inference `MODEL_ABSTAIN`, probability `0.02610197179968863`, threshold `0.93`.
+- Evidence `#223`, Outbox `#41`, dan Telegram `message_id=729` berstatus `SENT`; read-back launcher mengembalikan `SENT_ALREADY`. Receipt lama `#5/#8/message_id=727` tidak direplay.
+- Command `aether:screen-ml-bbca --live` idempoten pada deployment resmi. Scheduler existing memuat slot `16:15 WIB`.
+- Percobaan resmi sebelumnya sempat gagal typed dengan `PROVIDER_CONNECTION_FAILED`, `cURL error 28`; tidak ada write pada percobaan itu. Percobaan berikutnya berhasil tanpa menaikkan timeout.
+- Halaman `/signal-monitoring` HTTP `200`; monitoring tetap memakai `MarketMonitoringService` existing. Tidak ada signal directional pada acceptance karena model abstain.
 - Outbox `#5` tetap `DELIVERY_UNKNOWN`; tidak dihapus dan tidak diretry. Tidak ada replay `SENT`.
 
 ### Timestamp Job #4 dan prosedur recovery
@@ -3433,6 +3486,38 @@ UI status:
 - ML training, promotion, strategy signals, and Outbox `#5` retry: NOT RUN.
 
 Evidence classes remain separate: DOCUMENTED, IMPLEMENTED, TESTED_ISOLATED, and LIVE_VERIFIED.
+
+## Addendum — Kesiapan Presentasi 22 November 2026
+
+Status akhir: PARTIAL_READY_FOR_PRESENTATION.
+
+LIVE_VERIFIED:
+- Runtime dashboard: `127.0.0.1:8000`.
+- Database: `project_bot_recovered_20261115_022935`.
+- Role: `aether_ingestion`; schema: `public`.
+- `/`, `/market/ACES?tab=summary`, `/history`, `/health`, `/profile`, `/research`, dan `/screener` HTTP `200` setelah warm-up.
+- Browser menampilkan Screener, Riset AI, History, Health, dan Profile.
+- `npm run build`: PASS, Vite `8.3.5`.
+- Focused suite: `40` tests, `174` assertions, PASS.
+
+IMPLEMENTED:
+- Halaman `/screener` dengan filter ticker/nama dan bucket.
+- Sidebar Screener di bawah Market Monitor.
+- Link Screener ke detail emiten.
+- Label `STATISTIK PROVIDER`; tidak mengubah WR event menjadi akurasi ML.
+- AI History memakai model konfigurasi efektif.
+- Konfigurasi konsultasi efektif: `ag/gemini-3.8-flash-high` melalui `services.consultation_ai`.
+
+PENDING/BLOCKED:
+- Screener live belum diaktifkan: `IDX_EDGE_SCREENER_ENABLED=false`, status tetap `PROVIDER_CAPABILITY_UNVERIFIED` sampai probe authenticated dan schema provider lulus.
+- Health probe menemukan `consultation_router` tersedia tetapi `inference_succeeded=false`; Gemini live acceptance belum lulus.
+- ACL role `aether_ingestion` belum lengkap untuk tabel history/profile/health lama. HTTP 200 fallback tidak membuktikan data DB terbaca.
+- Intraday masih quarantine; board scope Pasar Reguler belum terbukti.
+- Berita/dokumen primer belum lengkap.
+- ML tetap disabled.
+- Telegram live delivery belum verified dengan numeric inbound `update_id` dan outbound `message_id`.
+
+Tidak ada secret, order broker, training ML, replay outbox, atau perubahan owner scheduler dilakukan.
 
 # End active checkpoint
 

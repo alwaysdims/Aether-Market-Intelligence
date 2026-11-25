@@ -107,58 +107,6 @@
                     </div>
                 </div>
 
-                <!-- Profil Perusahaan -->
-                <div class="bg-[#0A213D] border border-[#F5F1E8]/10 rounded-lg p-5 space-y-3">
-                    <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-[#E5C49B]">Profil Usaha Emiten</h3>
-                    <p class="text-xs text-[#F5F1E8]/80 leading-relaxed">
-                        {{ $company?->company_name ?? $ticker }} beroperasi di sektor <strong class="text-[#F5F1E8]">{{ $company?->sector ?: 'Umum' }}</strong>, industri <strong class="text-[#F5F1E8]">{{ $company?->industry ?: '-' }}</strong>, tercatat di Bursa Efek Indonesia pada <strong class="text-[#F5F1E8]">{{ $company?->listing_board ?? 'Papan Utama' }}</strong>.
-                    </p>
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 text-xs font-mono">
-                        <div class="bg-[#0D2B4E] p-2.5 rounded border border-[#F5F1E8]/5">
-                            <span class="text-[10px] text-[#F5F1E8]/40 block">TANGGAL IPO</span>
-                            <span class="font-bold text-[#F5F1E8]">{{ $company?->listing_date ?? '-' }}</span>
-                        </div>
-                        <div class="bg-[#0D2B4E] p-2.5 rounded border border-[#F5F1E8]/5">
-                            <span class="text-[10px] text-[#F5F1E8]/40 block">PAPAN PENCATATAN</span>
-                            <span class="font-bold text-[#F5F1E8]">{{ $company?->listing_board ?? 'Utama' }}</span>
-                        </div>
-                        <div class="bg-[#0D2B4E] p-2.5 rounded border border-[#F5F1E8]/5">
-                            <span class="text-[10px] text-[#F5F1E8]/40 block">TIPE INSTRUMEN</span>
-                            <span class="font-bold text-[#F5F1E8]">{{ $company?->instrument_type ?? 'EQUITY' }}</span>
-                        </div>
-                        <div class="bg-[#0D2B4E] p-2.5 rounded border border-[#F5F1E8]/5">
-                            <span class="text-[10px] text-[#F5F1E8]/40 block">STATUS REGISTRI</span>
-                            <span class="font-bold text-emerald-400">{{ $company ? 'TERDAFTAR' : 'UNREGISTERED' }}</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Snapshot Harga Sesi Terakhir -->
-                <div class="bg-[#0A213D] border border-[#F5F1E8]/10 rounded-lg p-5 space-y-3">
-                    <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-[#E5C49B]">Statistik Harga Sesi Terakhir</h3>
-                    @if($latestObs)
-                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
-                            <div class="bg-[#0D2B4E] p-2.5 rounded">
-                                <span class="text-[10px] text-[#F5F1E8]/40 block">OPEN</span>
-                                <span class="text-sm font-bold text-[#F5F1E8] tabular-nums">Rp {{ number_format($latestObs->open_price ?? 0, 0, ',', '.') }}</span>
-                            </div>
-                            <div class="bg-[#0D2B4E] p-2.5 rounded">
-                                <span class="text-[10px] text-[#F5F1E8]/40 block">HIGH</span>
-                                <span class="text-sm font-bold text-emerald-400 tabular-nums">Rp {{ number_format($latestObs->high_price ?? 0, 0, ',', '.') }}</span>
-                            </div>
-                            <div class="bg-[#0D2B4E] p-2.5 rounded">
-                                <span class="text-[10px] text-[#F5F1E8]/40 block">LOW</span>
-                                <span class="text-sm font-bold text-rose-400 tabular-nums">Rp {{ number_format($latestObs->low_price ?? 0, 0, ',', '.') }}</span>
-                            </div>
-                            <div class="bg-[#0D2B4E] p-2.5 rounded">
-                                <span class="text-[10px] text-[#F5F1E8]/40 block">VOLUME</span>
-                                <span class="text-sm font-bold text-[#E5C49B] tabular-nums">{{ number_format($latestObs->volume ?? 0, 0, ',', '.') }} lbr</span>
-                            </div>
-                        </div>
-                    @else
-                        <p class="text-xs text-[#F5F1E8]/50 py-4 text-center font-mono">DATA_NOT_AVAILABLE — Data bar sesi terakhir belum tersedia.</p>
-                    @endif
-                </div>
             </div>
 
             <!-- Right Column: Technical decision panel -->
@@ -205,9 +153,6 @@
                     @endif
                 </div>
             </div>
-        <div class="mt-6">
-            @include('dashboard.ticker_insiders')
-        </div>
     @endif
 
     <!-- Tab 2: Pemantauan & Sinyal -->
@@ -665,6 +610,9 @@
                             @if(!empty($aiConclusion['header']['mode_label']))
                                 <span>&bull; Mode: <strong class="text-[#F5F1E8]/80">{{ $aiConclusion['header']['mode_label'] }}</strong></span>
                             @endif
+                            @if($aiConclusion['header']['is_analysis_stale_for_latest_bar'])
+                                <span class="text-amber-300">&bull; Narasi tersimpan lebih lama dari bar terbaru {{ $aiConclusion['header']['latest_observation_date'] }}.</span>
+                            @endif
                         </div>
                     </div>
 
@@ -828,9 +776,6 @@
                                 Prediksi Model: {{ $aiConclusion['section_d']['model_name'] }} &bull; {{ $aiConclusion['section_d']['strategy_protocol'] }}
                             </span>
                         </div>
-                        <span class="px-2 py-0.5 rounded text-[10px] font-mono border border-[#F5F1E8]/15 bg-[#05152B] text-[#E5C49B]">
-                            {{ $aiConclusion['section_d']['validation_badge'] }}
-                        </span>
                     </div>
 
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">

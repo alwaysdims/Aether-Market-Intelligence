@@ -35,9 +35,12 @@ class TelegramFormattingService
         $dueWib = $signal->evaluation_due_date->format('d M Y');
         $expWib = $signal->expires_at->timezone('Asia/Jakarta')->format('d M Y, H:i').' WIB';
 
-        $pUpPct = round($signal->probability_up * 100, 2);
-        $pDownPct = round($signal->probability_down * 100, 2);
-        $confPct = round($signal->confidence_score * 100, 2);
+        $hasInferenceMetrics = $signal->probability_up !== null
+            && $signal->probability_down !== null
+            && $signal->confidence_score !== null;
+        $pUpPct = $hasInferenceMetrics ? round($signal->probability_up * 100, 2) : null;
+        $pDownPct = $hasInferenceMetrics ? round($signal->probability_down * 100, 2) : null;
+        $confPct = $hasInferenceMetrics ? round($signal->confidence_score * 100, 2) : null;
 
         $lines = [];
         $lines[] = '🎯 AETHER MARKET INTELLIGENCE — PREDIKSI SINYAL';
@@ -52,15 +55,23 @@ class TelegramFormattingService
         $lines[] = '';
         $lines[] = '💵 HARGA & WAKTU ACUAN';
         $lines[] = '• Harga Acuan   : Rp '.number_format($signal->reference_price, 2, ',', '.')." ({$decDateWib})";
-        $lines[] = '• Kualitas Data : EOD Final (Yahoo Finance v8 / Delayed 15m)';
+        $contract = is_array($signal->metadata['contract'] ?? null) ? $signal->metadata['contract'] : [];
+        $sourceLabel = $contract['source'] ?? ($signal->metadata['source'] ?? 'NOT_VERIFIED');
+        $horizonLabel = $signal->metadata['horizon_type'] ?? 'NOT_VERIFIED';
+        $lines[] = '• Kualitas Data : '.($signal->metadata['data_quality'] ?? 'NOT_VERIFIED');
+        $lines[] = '• Sumber Data   : '.$sourceLabel;
         $lines[] = "• Waktu Publikasi: {$pubWib}";
-        $lines[] = "• Horizon Uji   : 5 Hari Bursa (Jatuh Tempo: {$dueWib})";
-        $lines[] = "• Batas Expiry  : Maksimal 14 Hari Kalender ({$expWib})";
+        $lines[] = "• Horizon Uji   : {$horizonLabel} (Jatuh Tempo: {$dueWib})";
+        $lines[] = "• Batas Expiry  : {$expWib}";
         $lines[] = '';
         $lines[] = '🤖 MODEL & ESTIMASI PROBABILITAS';
         $lines[] = "• Model / Versi : {$signal->model_name} ({$signal->model_version})";
-        $lines[] = "• P(Naik / UP)  : {$pUpPct}% | P(Turun / DOWN): {$pDownPct}%";
-        $lines[] = "• Tingkat Yakin : {$confPct}% (Ambang Batas Selektif: >= 40.00% / Tau 0.70)";
+        $lines[] = $hasInferenceMetrics
+            ? "• P(Naik / UP)  : {$pUpPct}% | P(Turun / DOWN): {$pDownPct}%"
+            : '• Probabilitas   : N/A (tidak ada artefak inferensi ML untuk bar ini)';
+        $lines[] = $hasInferenceMetrics
+            ? "• Tingkat Yakin : {$confPct}%"
+            : '• Tingkat Yakin : N/A (rule-based/structured fallback)';
         $lines[] = '• Target Harga  : '.($signal->target_price ? 'Rp '.number_format($signal->target_price, 2, ',', '.') : 'Sesuai Horizon 5-Hari');
         $lines[] = '• Batas Pembatal: '.($signal->invalidation_price ? 'Rp '.number_format($signal->invalidation_price, 2, ',', '.') : 'Level Support/Resistance');
         $lines[] = '';

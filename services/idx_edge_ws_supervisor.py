@@ -8,7 +8,9 @@ import sys
 import time
 import random
 import uuid
+from datetime import datetime
 from typing import Dict, List, Optional
+from zoneinfo import ZoneInfo
 import websockets
 from websockets.exceptions import ConnectionClosedError, ConnectionClosedOK
 
@@ -32,6 +34,19 @@ _instance_lock = None
 
 # Provider has not certified event-time semantics. Preserve raw values and expose this label.
 EVENT_TIME_STATUS = "EVENT_TIME_UNVERIFIED"
+WIB = ZoneInfo("Asia/Jakarta")
+
+
+def _wib_now() -> datetime:
+    return datetime.now(WIB)
+
+
+def _wib_stamp() -> str:
+    return _wib_now().strftime("%Y-%m-%d %H:%M:%S WIB")
+
+
+def _wib_date() -> str:
+    return _wib_now().strftime("%Y-%m-%d")
 
 
 def classify_frame_type(frame: dict) -> str:
@@ -312,12 +327,12 @@ class IdxEdgeWsSupervisor:
     def __init__(self):
         self.api_key = self._resolve_api_key()
         self.running = True
-        self.run_id = f"WSRUN_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        self.run_id = f"WSRUN_{_wib_now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
         self.connection_id = None
         self.reconnect_delay = 2.0
         self.max_reconnect_delay = 30.0
         self.last_flush_time = 0.0
-        self.today_date_str = time.strftime("%Y-%m-%d")
+        self.today_date_str = _wib_date()
         self.run_artifacts = run_artifact_paths(self.run_id)
 
         # Load existing state to preserve yesterday's archive if present
@@ -333,7 +348,7 @@ class IdxEdgeWsSupervisor:
                             "last_trade_at": old_data.get("last_trade_at"),
                             "total_trades": old_data.get("total_trades", 0),
                             "session_coverage": old_data.get("session_coverage", {}),
-                            "archived_at": time.strftime("%Y-%m-%d %H:%M:%S WIB"),
+                            "archived_at": _wib_stamp(),
                             "note": "Archived previous trading session. Never counted in today's session aggregates."
                         }
                     elif old_date == self.today_date_str:
@@ -350,12 +365,12 @@ class IdxEdgeWsSupervisor:
             "supervisor_pid": os.getpid(),
             "launcher_path": os.path.abspath(__file__),
             "run_artifacts": self.run_artifacts,
-            "process_started_at": time.strftime("%Y-%m-%d %H:%M:%S WIB"),
-            "process_alive_last_observed_at": time.strftime("%Y-%m-%d %H:%M:%S WIB"),
+            "process_started_at": _wib_stamp(),
+            "process_alive_last_observed_at": _wib_stamp(),
             "status": "DISCONNECTED",
             "connected_at": None,
             "socket_connected_at": None,
-            "last_heartbeat_at": time.strftime("%Y-%m-%d %H:%M:%S WIB"),
+            "last_heartbeat_at": _wib_stamp(),
             "heartbeat_epoch": int(time.time()),
             "last_message_at": None,
             "last_raw_frame_at": None,
@@ -533,7 +548,7 @@ class IdxEdgeWsSupervisor:
     async def _heartbeat_loop(self):
         while self.running:
             try:
-                self.state["last_heartbeat_at"] = time.strftime("%Y-%m-%d %H:%M:%S WIB")
+                self.state["last_heartbeat_at"] = _wib_stamp()
                 self.state["process_alive_last_observed_at"] = self.state["last_heartbeat_at"]
                 self.state["heartbeat_epoch"] = int(time.time())
                 self._flush_state(force=False)
@@ -571,13 +586,13 @@ class IdxEdgeWsSupervisor:
                     append_connection_event(self.state, {
                         "event": "CONNECTED",
                         "connection_id": self.connection_id,
-                        "at_wib": time.strftime("%Y-%m-%d %H:%M:%S WIB"),
+                        "at_wib": _wib_stamp(),
                         "attempt_number": self.state["reconnect_attempts"] + 1,
                     })
                     self.state["successful_reconnects"] = self.state["counter_state"]["run"]["successful_reconnects"]
                     self.state["status"] = "CONNECTED"
                     self.state["connected_socket"] = True
-                    self.state["connected_at"] = time.strftime("%Y-%m-%d %H:%M:%S WIB")
+                    self.state["connected_at"] = _wib_stamp()
                     self.state["socket_connected_at"] = self.state["connected_at"]
                     self.state["disconnected_at"] = None
                     self.reconnect_delay = 2.0
@@ -586,7 +601,7 @@ class IdxEdgeWsSupervisor:
                     # Register ping/pong ping response listener or track ping pong via websocket connection object
                     async for raw_msg in ws:
                         now_epoch = int(time.time())
-                        now_str = time.strftime("%Y-%m-%d %H:%M:%S WIB")
+                        now_str = _wib_stamp()
                         self.state["last_message_at"] = now_str
                         self.state["last_message_epoch"] = now_epoch
                         self.state["total_messages"] += 1
@@ -626,12 +641,12 @@ class IdxEdgeWsSupervisor:
                 append_connection_event(self.state, {
                     "event": "CLOSED",
                     "connection_id": self.connection_id,
-                    "at_wib": time.strftime("%Y-%m-%d %H:%M:%S WIB"),
+                    "at_wib": _wib_stamp(),
                     "close_code": code,
                     "error_type": error_meta["error_type"],
                     "handshake_timeout": error_meta["handshake_timeout"],
                 })
-                self.state["disconnected_at"] = time.strftime("%Y-%m-%d %H:%M:%S WIB")
+                self.state["disconnected_at"] = _wib_stamp()
                 self.state["connected_socket"] = False
                 close_statuses = {
                     4401: "AUTH_FAILED",
@@ -657,7 +672,7 @@ class IdxEdgeWsSupervisor:
                 append_connection_event(self.state, {
                     "event": "ERROR",
                     "connection_id": self.connection_id,
-                    "at_wib": time.strftime("%Y-%m-%d %H:%M:%S WIB"),
+                    "at_wib": _wib_stamp(),
                     "close_code": error_meta["close_code"],
                     "error_type": error_meta["error_type"],
                     "handshake_timeout": error_meta["handshake_timeout"],
@@ -676,7 +691,7 @@ class IdxEdgeWsSupervisor:
             return
 
         # Inspect format: data can be dict or list
-        received_at = time.strftime("%Y-%m-%d %H:%M:%S")
+        received_at = _wib_now().strftime("%Y-%m-%d %H:%M:%S WIB")
 
         # Check for message type
         msg_type = (data.get("type") or data.get("action") or "UNKNOWN").lower()
@@ -744,7 +759,7 @@ class IdxEdgeWsSupervisor:
                 parsed_ts_wib = None
                 if raw_ts is not None:
                     try:
-                        parsed_ts_wib = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(float(raw_ts)))
+                        parsed_ts_wib = datetime.fromtimestamp(float(raw_ts), WIB).strftime("%Y-%m-%d %H:%M:%S")
                     except Exception:
                         parsed_ts_wib = None
 
@@ -782,7 +797,7 @@ class IdxEdgeWsSupervisor:
             self.state["total_trades_counter_status"] = "COUNTER_UNVERIFIED_ACROSS_CONNECTIONS"
             self.state["total_trades"] = self.state["counter_state"]["run"]["unique_accepted_live_trade_items"]
             if snapshot_trades:
-                self.state["last_trade_at"] = time.strftime("%Y-%m-%d %H:%M:%S WIB")
+                self.state["last_trade_at"] = _wib_stamp()
 
         elif msg_type == "trade":
             self.state["last_market_event_at"] = received_at
@@ -838,13 +853,13 @@ class IdxEdgeWsSupervisor:
                 parsed_ts_wib = None
                 if raw_ts is not None:
                     try:
-                        parsed_ts_wib = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(float(raw_ts)))
+                        parsed_ts_wib = datetime.fromtimestamp(float(raw_ts), WIB).strftime("%Y-%m-%d %H:%M:%S")
                     except Exception:
                         parsed_ts_wib = None
                 event_time = event_time_metadata(match_time_raw, _utc_now(), raw_ts)
 
                 self.state["total_trades"] += 1
-                self.state["last_trade_at"] = time.strftime("%Y-%m-%d %H:%M:%S WIB")
+                self.state["last_trade_at"] = _wib_stamp()
 
                 # Update observed window tracking
                 cov = self.state["session_coverage"]
@@ -1099,7 +1114,7 @@ if __name__ == "__main__":
 
     def handle_exit(sig, frame):
         supervisor.running = False
-        now = time.strftime("%Y-%m-%d %H:%M:%S WIB")
+        now = _wib_stamp()
         supervisor.state["status"] = "STOPPED"
         supervisor.state["connected_socket"] = False
         supervisor.state["disconnected_at"] = now
@@ -1122,7 +1137,7 @@ if __name__ == "__main__":
         if supervisor.state.get("status") not in {"STOPPED", "AUTH_FAILED", "ENTITLEMENT_REQUIRED", "OWNER_CONFLICT"}:
             supervisor.state["status"] = "DISCONNECTED"
         supervisor.state["connected_socket"] = False
-        supervisor.state["disconnected_at"] = supervisor.state.get("disconnected_at") or time.strftime("%Y-%m-%d %H:%M:%S WIB")
-        supervisor.state["stopped_at"] = supervisor.state.get("stopped_at") or time.strftime("%Y-%m-%d %H:%M:%S WIB")
+        supervisor.state["disconnected_at"] = supervisor.state.get("disconnected_at") or _wib_stamp()
+        supervisor.state["stopped_at"] = supervisor.state.get("stopped_at") or _wib_stamp()
         supervisor._flush_state(force=True)
         release_single_instance_lock()

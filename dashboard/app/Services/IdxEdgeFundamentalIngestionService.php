@@ -13,6 +13,16 @@ class IdxEdgeFundamentalIngestionService
         protected DataSourceRegistryService $registry
     ) {}
 
+    /** @param array<string, mixed> $attributes */
+    protected function safeSourceUpdate(DataSource $source, array $attributes): void
+    {
+        try {
+            $source->update($attributes);
+        } catch (\Throwable $error) {
+            logger()->warning('[IdxEdgeFundamental] metadata update skipped: '.$error::class);
+        }
+    }
+
     /**
      * Synchronize annual financial statements for a ticker.
      *
@@ -24,7 +34,7 @@ class IdxEdgeFundamentalIngestionService
 
         $source = DataSource::where('name', 'IDX Edge Fundamental')->first();
         if ($source) {
-            $source->update(['last_attempt_at' => now('UTC')]);
+            $this->safeSourceUpdate($source, ['last_attempt_at' => now('UTC')]);
         }
 
         // 1. Fetch Income Statement
@@ -35,7 +45,7 @@ class IdxEdgeFundamentalIngestionService
             $errorMsg = $incRes['message'] ?? ($isFetchFailed ? 'Gagal mengambil income statement.' : 'Penyedia mengembalikan respons kosong (tidak ada item laporan keuangan).');
 
             if ($source) {
-                $source->update([
+                $this->safeSourceUpdate($source, [
                     'last_error_at' => now('UTC'),
                     'last_error_message' => $errorMsg,
                     'health' => 'degraded',
@@ -278,7 +288,7 @@ class IdxEdgeFundamentalIngestionService
         }
 
         if ($source) {
-            $source->update([
+            $this->safeSourceUpdate($source, [
                 'last_success_at' => now('UTC'),
                 'last_error_at' => null,
                 'last_error_message' => null,

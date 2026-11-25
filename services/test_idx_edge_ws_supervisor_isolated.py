@@ -24,10 +24,16 @@ from idx_edge_ws_supervisor import (
     record_live_trade_counters,
     connection_error_metadata,
     IdxEdgeWsSupervisor,
+    _wib_date,
+    _wib_stamp,
 )
 
 
 class RunningTradeSupervisorIsolatedTest(unittest.TestCase):
+    def test_session_clock_uses_wib(self):
+        self.assertRegex(_wib_date(), r"^20\d{2}-\d{2}-\d{2}$")
+        self.assertTrue(_wib_stamp().endswith(" WIB"))
+
     def test_snapshot_never_becomes_shadow_candidate(self):
         frame = {"type": "snapshot", "recent": [{"t": "BBCA", "v": 200_000_000}]}
         self.assertEqual(classify_frame_type(frame), "snapshot")

@@ -1,0 +1,24 @@
+{
+  "receipt_type": "SHADOW_ARTIFACT_LOAD",
+  "status": "BLOCKED_NO_INFERENCE",
+  "experiment_id": "IDX_EDGE_BBCA_PILOT_V1",
+  "ticker": "BBCA",
+  "decision_time_utc": null,
+  "data_cutoff": null,
+  "latest_valid_bar_available": "2026-11-23",
+  "model_artifacts": {
+    "tp_6_logistic_regression": "17c9b9a048b6a9727e4ceb1b4c5f9c3cfd35224f2d585c556ee573c14aa783e8",
+    "tp_6_hist_gradient_boosting": "a965b475b6e67036865914274231ab02806600110394137c3d670f0ffba45843",
+    "tp_15_logistic_regression": "410e2fed6e24a9acf85c860bed5e311b7adecaf0f0a1ef61eb04d550ec18dd0c",
+    "tp_15_hist_gradient_boosting": "95378de32d4b9978e60235eb151f28ddcab1b3c7e88036a4b93dd7927621a433"
+  },
+  "schema_hash": null,
+  "feature_dataset_hash": "dae027c975cd1e87728cb141344c0ab907a5dcf71d755b428f3b2460380c7d8b",
+  "reason": "Pilot artifacts are research-only. Existing production path has no schema-compatible BBCA artifact-load contract and no approved current-bar shadow invocation path.",
+  "probabilities": null,
+  "thresholds": null,
+  "target_contract": null,
+  "support_resistance": null,
+  "due_session": null,
+  "production_publication": "DISABLED"
+}

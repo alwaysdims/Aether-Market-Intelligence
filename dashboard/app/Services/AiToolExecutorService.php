@@ -438,7 +438,7 @@ class AiToolExecutorService
             "Top net buyers: {$buyerText}",
             "Top net sellers: {$sellerText}",
             'Top-N hanya sampel perantara IDX Edge PRO, bukan net seluruh pasar atau inventori investor.',
-            'Model ML: TIDAK AKTIF; artefak produksi belum tersedia. Status bar: NO_ACTIVE_INFERENCE_FOR_BAR, bukan NO_SIGNAL_ABSTAIN.',
+            'Model prediktif: tidak ada inference receipt untuk ticker/bar ini. Status bar: NO_ACTIVE_INFERENCE_FOR_BAR, bukan NO_SIGNAL_ABSTAIN.',
         ]);
     }
 

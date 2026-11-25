@@ -67,6 +67,66 @@ class IdxEdgeClient
         });
     }
 
+    /**
+     * Read latest prices for many instruments in one provider request.
+     *
+     * @param  array<int, string>  $tickers
+     * @return array<string, mixed>
+     */
+    public function priceList(array $tickers): array
+    {
+        $codes = array_values(array_unique(array_filter(array_map(
+            static fn (mixed $ticker): string => strtoupper(trim((string) $ticker)),
+            $tickers
+        ), static fn (string $ticker): bool => preg_match('/^[A-Z]{4,5}$/', $ticker) === 1)));
+        if ($codes === []) {
+            return $this->failure('INVALID_TICKER_LIST', 'Daftar kode saham kosong.');
+        }
+        if (count($codes) > 1000) {
+            return $this->failure('TOO_MANY_TICKERS', 'Maksimum 1000 kode per request.');
+        }
+        if (! (bool) config('services.idx_edge.enabled', false) && ! $this->isEndpointAllowed('price')) {
+            return $this->failure('PROVIDER_DISABLED', 'IDX Edge dinonaktifkan.');
+        }
+
+        sort($codes);
+
+        return $this->get(
+            '/api/price/list',
+            ['codes' => implode(',', $codes)],
+            'price-list:'.implode(',', $codes),
+            function (array $data): array {
+                $stocks = is_array($data['stocks'] ?? null) ? $data['stocks'] : [];
+                $normalized = [];
+                foreach ($stocks as $code => $item) {
+                    if (! is_array($item) || ! is_numeric($item['last_price'] ?? null)) {
+                        continue;
+                    }
+                    $normalized[strtoupper((string) ($item['code'] ?? $code))] = [
+                        'code' => strtoupper((string) ($item['code'] ?? $code)),
+                        'last_price' => (float) $item['last_price'],
+                        'change' => isset($item['change']) && is_numeric($item['change']) ? (float) $item['change'] : null,
+                        'change_pct' => isset($item['change_pct']) && is_numeric($item['change_pct']) ? (float) $item['change_pct'] : null,
+                        'source_date' => isset($item['source_date']) ? (string) $item['source_date'] : null,
+                        'data_ts' => isset($item['data_ts']) ? (string) $item['data_ts'] : null,
+                        'quote_age_ms' => isset($item['quote_age_ms']) && is_numeric($item['quote_age_ms']) ? (int) $item['quote_age_ms'] : null,
+                        'freq' => isset($item['freq']) && is_numeric($item['freq']) ? (int) $item['freq'] : null,
+                        'lot' => isset($item['lot']) && is_numeric($item['lot']) ? (float) $item['lot'] : null,
+                        'value' => isset($item['value']) && is_numeric($item['value']) ? (float) $item['value'] : null,
+                        'vwap' => isset($item['vwap']) && is_numeric($item['vwap']) ? (float) $item['vwap'] : null,
+                    ];
+                }
+
+                return [
+                    'count' => count($normalized),
+                    'stocks' => $normalized,
+                    'market' => is_array($data['market'] ?? null) ? $data['market'] : [],
+                ];
+            },
+            30
+        );
+    }
+
     /** @return array<string, mixed> */
     public function priceIhsg(): array
     {
@@ -387,7 +447,7 @@ class IdxEdgeClient
 
         $params = [
             'page' => max(1, $page),
-            'per_page' => min(50, max(1, $perPage)),
+            'per_page' => min(1000, max(1, $perPage)),
         ];
         if ($date !== null) {
             $params['date'] = $date;
@@ -416,6 +476,9 @@ class IdxEdgeClient
                         'code' => strtoupper(trim((string) $row['code'])),
                         'name' => (string) ($row['name'] ?? ''),
                         'close' => isset($row['close']) && is_numeric($row['close']) ? (float) $row['close'] : null,
+                        'change' => isset($row['change']) && is_numeric($row['change']) ? (float) $row['change'] : null,
+                        'change_pct' => isset($row['change_pct']) && is_numeric($row['change_pct']) ? (float) $row['change_pct'] : null,
+                        'source_date' => (string) ($row['source_date'] ?? $data['date'] ?? ''),
                         'listed_shares' => isset($row['listed_shares']) && is_numeric($row['listed_shares']) ? (float) $row['listed_shares'] : null,
                         'market_cap' => isset($row['market_cap']) && is_numeric($row['market_cap']) ? (float) $row['market_cap'] : null,
                         'turnover_ratio' => isset($row['turnover_ratio']) && is_numeric($row['turnover_ratio']) ? (float) $row['turnover_ratio'] : null,
@@ -431,8 +494,54 @@ class IdxEdgeClient
                     'items' => $items,
                 ];
             },
-            300 // 5 minutes cache
+            30 // Short cache for current API snapshot
         );
+    }
+
+    /**
+     * Read complete current equity universe from IDX Edge market-cap pages.
+     *
+     * @return array<string, mixed>
+     */
+    public function allMarketCap(?string $date = null): array
+    {
+        $cacheKey = 'idx-edge:universe:'.($date ?? 'latest');
+        $cached = Cache::get($cacheKey);
+        if (is_array($cached)) {
+            return $cached;
+        }
+
+        $first = $this->marketCap(1, 50, $date);
+        if (! ($first['success'] ?? false)) {
+            return $first;
+        }
+
+        $data = $first['data'] ?? [];
+        $items = $data['items'] ?? [];
+        $totalPages = min(100, max(1, (int) ($data['total_pages'] ?? 1)));
+        for ($page = 2; $page <= $totalPages; $page++) {
+            // Provider accepts 50 rows only; spacing avoids local throttle between pages.
+            usleep(350000);
+            $next = $this->marketCap($page, 50, $date);
+            if (! ($next['success'] ?? false)) {
+                return $next;
+            }
+            $items = array_merge($items, $next['data']['items'] ?? []);
+        }
+
+        $result = [
+            'success' => true,
+            'data' => [
+                'date' => $data['date'] ?? $date,
+                'total' => (int) ($data['total'] ?? count($items)),
+                'items' => $items,
+            ],
+            'provider' => $first['provider'] ?? null,
+            'received_at' => $first['received_at'] ?? null,
+        ];
+        Cache::put($cacheKey, $result, now()->addMinutes(5));
+
+        return $result;
     }
 
     /**
@@ -556,6 +665,8 @@ class IdxEdgeClient
         $query = [
             'flow' => in_array($flow, ['all', 'F', 'D'], true) ? $flow : 'all',
             'broker_limit' => $effectiveLimit,
+            'level_limit' => 25,
+            'all_data' => 'false',
         ];
         if ($net) {
             $query['net'] = 'true';
@@ -638,6 +749,44 @@ class IdxEdgeClient
         $ticker = strtoupper(trim($ticker));
         $page = min(100, max(1, $page));
         $pageSize = min(100, max(1, $pageSize));
+
+        return $this->fetchInsiderPage($ticker, $page, $pageSize);
+    }
+
+    /** @return array<string, mixed> */
+    public function allInsiders(string $ticker, int $pageSize = 100): array
+    {
+        $ticker = strtoupper(trim($ticker));
+        $pageSize = min(100, max(1, $pageSize));
+        $first = $this->fetchInsiderPage($ticker, 1, $pageSize);
+        if (! ($first['success'] ?? false)) {
+            return $first;
+        }
+
+        $data = $first['data'] ?? [];
+        $totalPages = max(1, (int) ($data['total_pages'] ?? 1));
+        $items = $data['items'] ?? [];
+        for ($currentPage = 2; $currentPage <= $totalPages; $currentPage++) {
+            $next = $this->fetchInsiderPage($ticker, $currentPage, $pageSize);
+            if (! ($next['success'] ?? false)) {
+                return $next + ['partial_items' => $items, 'partial_pages' => $currentPage - 1];
+            }
+            $items = array_merge($items, $next['data']['items'] ?? []);
+        }
+        $data['items'] = $items;
+        $data['count'] = count($items);
+        $data['page'] = 1;
+        $data['page_size'] = $pageSize;
+        $data['total_pages'] = $totalPages;
+        $data['evidence'] = ['pages_fetched' => $totalPages, 'complete' => true];
+        $first['data'] = $data;
+
+        return $first;
+    }
+
+    /** @return array<string, mixed> */
+    private function fetchInsiderPage(string $ticker, int $page, int $pageSize): array
+    {
         if (! preg_match('/^[A-Z]{4}$/', $ticker)) {
             return $this->failure('INVALID_TICKER', 'Kode saham harus terdiri dari 4 huruf.');
         }

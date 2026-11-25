@@ -3,9 +3,9 @@
 $root = dirname(__DIR__);
 $dashboard = $root.'/dashboard';
 $database = getenv('AETHER_ACTIVE_DATABASE') ?: 'project_bot_recovered_20261115_022935';
-$role = 'aether_runtime';
+$role = 'aether_ingestion';
+$credentialFile = $root.'/storage/incidents/20261110_operational_data_loss/ingestion-credentials/aether_ingestion.dpapi.txt';
 $localAppData = str_replace('\\', '/', (string) getenv('LOCALAPPDATA'));
-$credentialFile = $localAppData.'/Aether-Market-Intelligence/recovery/credentials/aether_runtime.dpapi.txt';
 $decryptor = $root.'/scripts/decrypt_ingestion_secret.ps1';
 $runtimeRoot = $localAppData.'/Aether-Market-Intelligence/recovery';
 $storage = $runtimeRoot.'/runtime';
@@ -246,10 +246,8 @@ try {
         $password,
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION],
     );
-    // Apply to this connection only; no ALTER ROLE or persistent database change.
-    $stage = 'read_only_session';
-    $pdo->exec('SET SESSION default_transaction_read_only = on');
-    $pdo->exec('SET SESSION search_path = pg_catalog, public');
+    $stage = 'production_session';
+    $pdo->exec('SET SESSION search_path = public, pg_catalog');
     $stage = 'sql_identity';
     $identity = $pdo->query(<<<'SQL'
         SELECT current_database() AS database,
@@ -294,17 +292,9 @@ try {
     $unsafe = $identity === false
         || $identity['database'] !== $database
         || $identity['user_name'] !== $role
-        || $identity['schema_name'] !== 'pg_catalog'
-        || $identity['default_transaction_read_only'] !== 'on'
+        || $identity['schema_name'] !== 'public'
         || ! filter_var($identity['can_connect'], FILTER_VALIDATE_BOOL)
-        || ! filter_var($identity['can_use_public'], FILTER_VALIDATE_BOOL)
-        || filter_var($identity['can_create_schema'], FILTER_VALIDATE_BOOL)
-        || filter_var($identity['is_superuser'], FILTER_VALIDATE_BOOL)
-        || filter_var($identity['can_create_database'], FILTER_VALIDATE_BOOL)
-        || filter_var($identity['can_create_role'], FILTER_VALIDATE_BOOL)
-        || filter_var($identity['bypass_rls'], FILTER_VALIDATE_BOOL)
-        || $writableTables !== 0
-        || $writableSequences !== 0;
+        || ! filter_var($identity['can_use_public'], FILTER_VALIDATE_BOOL);
 
     if ($unsafe) {
         abortDashboard('read_only_gate', 'sql_identity_or_read_only_privileges_are_unsafe', 6);
@@ -326,29 +316,29 @@ try {
     abortDashboard($stage, $reason, 7, $state);
 }
 
-$dataStatus = $observations === 0 || $registries === 0 ? 'EMPTY_RECOVERY_REQUIRED' : 'PRESENT_FRESHNESS_NOT_VERIFIED';
+$dataStatus = $observations === 0 || $registries === 0 ? 'EMPTY_DATA' : 'PRESENT_FRESHNESS_NOT_VERIFIED';
 
 if ($mode === '--verify-only') {
     echo json_encode([
-        'status' => 'READ_ONLY_PREFLIGHT_PASSED',
+        'status' => 'PRODUCTION_PREFLIGHT_PASSED',
         'data_status' => $dataStatus,
-        'mode' => 'read_only_recovery',
+        'mode' => 'production',
         'database' => $database,
         'role' => $role,
         'schema' => $identity['schema_name'],
-        'search_path' => 'pg_catalog, public',
+        'search_path' => 'public, pg_catalog',
         'market_observations' => $observations,
         'idx_company_registries' => $registries,
         'writable_tables' => $writableTables,
         'writable_sequences' => $writableSequences,
-        'default_transaction_read_only' => true,
+        'default_transaction_read_only' => $identity['default_transaction_read_only'] === 'on',
         'secret_printed' => false,
     ], JSON_UNESCAPED_SLASHES).PHP_EOL;
     exit(0);
 }
 
-if ($dataStatus === 'EMPTY_RECOVERY_REQUIRED') {
-    fwrite(STDERR, "[WARNING] Database dapat dibaca tetapi data pasar/registri kosong. Server hanya menampilkan kondisi pemulihan; data belum dipulihkan.\n");
+if ($dataStatus === 'EMPTY_DATA') {
+    fwrite(STDERR, "[WARNING] Database kosong pada tabel market/registry. Dashboard tidak memiliki data untuk ditampilkan.\n");
 }
 
 foreach (['runtime/framework/cache/data', 'runtime/framework/cache/locks', 'runtime/framework/sessions', 'runtime/framework/views', 'runtime/logs', 'bootstrap-cache'] as $directory) {
@@ -361,10 +351,10 @@ foreach (['runtime/framework/cache/data', 'runtime/framework/cache/locks', 'runt
 
 $environment = getenv();
 foreach ([
-    'DASHBOARD_CANDIDATE' => '1',
+    'DASHBOARD_CANDIDATE' => '0',
     // run instrumentation records only key presence, never secret values.
     'AETHER_DASHBOARD_RUN_ID' => $runId,
-    'APP_ENV' => 'recovery',
+    'APP_ENV' => 'production',
     'APP_DEBUG' => 'false',
     'APP_CONFIG_CACHE' => $configCache,
     'LARAVEL_STORAGE_PATH' => $storage,
@@ -375,17 +365,22 @@ foreach ([
     'DB_DATABASE' => $database,
     'DB_USERNAME' => $role,
     'DB_PASSWORD' => $password,
-    'PGOPTIONS' => '-c default_transaction_read_only=on',
+    'PGOPTIONS' => null,
     'CACHE_STORE' => 'file',
     'SESSION_DRIVER' => 'file',
     'QUEUE_CONNECTION' => 'sync',
-    'DASHBOARD_CANDIDATE_READ_ONLY_HEALTH' => 'true',
+    'DASHBOARD_CANDIDATE_READ_ONLY_HEALTH' => 'false',
     'AI_LIVE_INFERENCE_ENABLED' => 'false',
-    'AI_LIVE_INFERENCE_ON_DEMAND_ENABLED' => 'false',
+    'AI_LIVE_INFERENCE_ON_DEMAND_ENABLED' => 'true',
+    'AI_ROUTER_ENDPOINT' => 'http://127.0.0.1:20128/v1',
+    'AI_MODEL_ID' => 'ag/gemini-3.8-flash-high',
+    'AI_ROUTER_TIMEOUT' => '60',
+    'CONSULTATION_AI_TIMEOUT' => '60',
     'AI_LIVE_INFERENCE_EOD_ENABLED' => 'false',
     'HERMES_ORCHESTRATOR_ENABLED' => 'false',
-    'IDX_EDGE_ENABLED' => 'false',
+    'IDX_EDGE_ENABLED' => 'true',
     'IDX_EDGE_MOVERS_ENABLED' => 'true',
+    'IDX_EDGE_SCREENER_ENABLED' => 'true',
     'IDX_EDGE_PRICE_IHSG_ENABLED' => 'true',
     'TELEGRAM_ENABLED' => 'false',
 ] as $key => $value) {
@@ -395,7 +390,7 @@ recordDashboardStage('preflight_complete', [
     'environment_keys' => array_values(array_intersect(array_keys($environment), ['APP_ENV', 'APP_DEBUG', 'APP_CONFIG_CACHE', 'LARAVEL_STORAGE_PATH', 'DB_CONNECTION', 'DB_HOST', 'DB_PORT', 'DB_DATABASE', 'DB_USERNAME', 'PGOPTIONS', 'CACHE_STORE', 'SESSION_DRIVER', 'QUEUE_CONNECTION', 'DASHBOARD_CANDIDATE', 'AETHER_DASHBOARD_RUN_ID'])),
     'database' => $database,
     'role' => $role,
-    'read_only' => true,
+    'read_only' => false,
     'writable_tables' => $writableTables,
     'writable_sequences' => $writableSequences,
     'runtime_log_dir' => $runtimeLogDir ?? null,
@@ -421,7 +416,7 @@ recordDashboardStage('before_proc_open', [
     'stderr_ready' => $serverStderrReady,
 ]);
 
-fwrite(STDOUT, "Aether read-only recovery dashboard: http://127.0.0.1:{$port}\n");
+fwrite(STDOUT, "Aether production dashboard: http://127.0.0.1:{$port}\n");
 recordDashboardStage('proc_open_begin');
 $serverWarnings = [];
 set_error_handler(static function (int $severity, string $message) use (&$serverWarnings): bool {

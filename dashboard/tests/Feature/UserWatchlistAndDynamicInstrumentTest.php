@@ -126,7 +126,11 @@ class UserWatchlistAndDynamicInstrumentTest extends TestCase
             'low_price' => 3030.0,
             'close_price' => 3090.0,
             'volume' => 27460600,
-            'source' => 'Yahoo Finance',
+            'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'is_eod_final' => true,
         ]);
 
@@ -176,7 +180,11 @@ class UserWatchlistAndDynamicInstrumentTest extends TestCase
             'ticker' => 'PTRO', 'observation_time' => now(),
             'bar_date' => app(BeiCalendarService::class)->getCurrentTradingDay(now('Asia/Jakarta')->subDay())->toDateString(),
             'open_price' => 3070, 'high_price' => 3140, 'low_price' => 3030,
-            'close_price' => 3090, 'volume' => 100, 'source' => 'Yahoo Finance',
+            'close_price' => 3090, 'volume' => 100, 'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'is_eod_final' => true, 'validation_status' => 'VALID',
         ]);
         $result = app(OnDemandResearchService::class)->handleResearchQuery('analisis PTRO', '5923895922', '5923895922', '211');
@@ -188,7 +196,11 @@ class UserWatchlistAndDynamicInstrumentTest extends TestCase
         MarketObservation::create([
             'ticker' => 'PTRO', 'observation_time' => now(), 'bar_date' => '2026-10-23',
             'open_price' => 3070, 'high_price' => 3140, 'low_price' => 3030,
-            'close_price' => 3090, 'volume' => 100, 'source' => 'Yahoo Finance',
+            'close_price' => 3090, 'volume' => 100, 'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'is_eod_final' => true, 'validation_status' => 'CONFLICTED',
         ]);
         $result = $this->twoWayService->handleInboundMessage($this->makeUpdate('analisis PTRO', 'upd_conflict', '213'));
@@ -201,12 +213,20 @@ class UserWatchlistAndDynamicInstrumentTest extends TestCase
         MarketObservation::create([
             'ticker' => 'PTRO', 'bar_date' => '2026-10-23', 'observation_time' => Carbon::parse('2026-10-23 16:30:00'),
             'open_price' => 3070, 'high_price' => 3140, 'low_price' => 3030, 'close_price' => 3090,
-            'volume' => 100, 'source' => 'Yahoo Finance', 'is_eod_final' => true, 'validation_status' => 'VALID',
+            'volume' => 100, 'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD', 'is_eod_final' => true, 'validation_status' => 'VALID',
         ]);
         MarketObservation::create([
             'ticker' => 'PTRO', 'bar_date' => '2026-10-21', 'observation_time' => Carbon::parse('2026-10-25 10:00:00'),
             'open_price' => 2970, 'high_price' => 3040, 'low_price' => 2930, 'close_price' => 2990,
-            'volume' => 100, 'source' => 'Yahoo Finance', 'is_eod_final' => true, 'validation_status' => 'VALID',
+            'volume' => 100, 'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD', 'is_eod_final' => true, 'validation_status' => 'VALID',
         ]);
         $selected = app(CanonicalMarketReadService::class)->latest('PTRO');
         $this->assertSame('2026-10-23', $selected->bar_date->toDateString());
@@ -232,11 +252,16 @@ class UserWatchlistAndDynamicInstrumentTest extends TestCase
         MarketObservation::create([
             'ticker' => 'PTRO', 'bar_date' => '2026-10-23', 'observation_time' => now(),
             'open_price' => 3070, 'high_price' => 3140, 'low_price' => 3030, 'close_price' => 3090,
-            'volume' => 100, 'source' => 'Yahoo Finance', 'is_eod_final' => true, 'validation_status' => 'VALID',
+            'volume' => 100, 'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD', 'is_eod_final' => true, 'validation_status' => 'VALID',
         ]);
         $response = $this->get(route('dashboard.overview'));
-        $response->assertOk()->assertSee('Harga acuan analisis: Rp2.700,00')->assertSee('Harga terakhir: Rp3.090,00');
-        $response->assertSee('Observation ID acuan: DATA_NOT_AVAILABLE');
+        $response->assertOk()
+            ->assertDontSee('Harga acuan analisis:')
+            ->assertDontSee('Observation ID acuan:');
         $this->assertDatabaseHas('evidence_snapshots', ['id' => $evidence->id, 'data_hash' => str_repeat('a', 64)]);
     }
 
@@ -250,7 +275,11 @@ class UserWatchlistAndDynamicInstrumentTest extends TestCase
         MarketObservation::create([
             'ticker' => 'PTRO', 'bar_date' => '2026-10-23', 'observation_time' => now(),
             'open_price' => 3070, 'high_price' => 3140, 'low_price' => 3030, 'close_price' => 3090,
-            'volume' => 100, 'source' => 'Yahoo Finance', 'is_eod_final' => true,
+            'volume' => 100, 'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD', 'is_eod_final' => true,
             'validation_status' => 'VALID', 'data_hash' => str_repeat('b', 64),
         ]);
         $resolver = app(CanonicalMarketReadService::class);
@@ -265,7 +294,11 @@ class UserWatchlistAndDynamicInstrumentTest extends TestCase
             MarketObservation::create([
                 'ticker' => $ticker, 'bar_date' => '2026-10-23', 'observation_time' => now(),
                 'open_price' => 3070, 'high_price' => 3140, 'low_price' => 3030, 'close_price' => 3090,
-                'volume' => 100, 'source' => 'Yahoo Finance', 'is_eod_final' => $final, 'validation_status' => $validation,
+                'volume' => 100, 'source' => 'IDX Edge PRO',
+                'board_scope' => 'RG',
+                'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+                'interval' => '1d',
+                'data_classification' => 'PUBLIC_MARKET_EOD', 'is_eod_final' => $final, 'validation_status' => $validation,
             ]);
             $this->assertSame($state, app(CanonicalMarketReadService::class)->state(app(CanonicalMarketReadService::class)->latest($ticker)));
         }
@@ -279,7 +312,11 @@ class UserWatchlistAndDynamicInstrumentTest extends TestCase
                 'ticker' => 'PTRO', 'bar_date' => $date,
                 'observation_time' => $date === '2026-10-21' ? Carbon::parse('2026-10-25 10:00:00') : Carbon::parse('2026-10-23 16:30:00'),
                 'open_price' => 3070, 'high_price' => 3140, 'low_price' => 3030,
-                'close_price' => 3090, 'volume' => 100, 'source' => 'Yahoo Finance',
+                'close_price' => 3090, 'volume' => 100, 'source' => 'IDX Edge PRO',
+                'board_scope' => 'RG',
+                'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+                'interval' => '1d',
+                'data_classification' => 'PUBLIC_MARKET_EOD',
                 'is_eod_final' => true, 'validation_status' => 'VALID',
             ]);
         }
@@ -294,7 +331,11 @@ class UserWatchlistAndDynamicInstrumentTest extends TestCase
             'ticker' => 'PTRO', 'observation_time' => now(),
             'bar_date' => app(BeiCalendarService::class)->getCurrentTradingDay(now('Asia/Jakarta')->subDay())->toDateString(),
             'open_price' => 3070, 'high_price' => 3140, 'low_price' => 3030,
-            'close_price' => 3090, 'volume' => 100, 'source' => 'Yahoo Finance',
+            'close_price' => 3090, 'volume' => 100, 'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'is_eod_final' => false, 'validation_status' => 'VALID',
         ]);
         $status = app(DataFreshnessPolicyService::class)->assessFreshness('PTRO');
@@ -315,7 +356,11 @@ class UserWatchlistAndDynamicInstrumentTest extends TestCase
             'ticker' => 'PTRO', 'observation_time' => now(),
             'bar_date' => app(BeiCalendarService::class)->getCurrentTradingDay(now('Asia/Jakarta')->subDay())->toDateString(),
             'open_price' => 3070, 'high_price' => 3140, 'low_price' => 3030,
-            'close_price' => 3090, 'volume' => 100, 'source' => 'Yahoo Finance',
+            'close_price' => 3090, 'volume' => 100, 'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'is_eod_final' => true, 'validation_status' => 'CONFLICTED',
         ]);
         $status = app(DataFreshnessPolicyService::class)->assessFreshness('PTRO');
@@ -328,7 +373,11 @@ class UserWatchlistAndDynamicInstrumentTest extends TestCase
             'ticker' => 'PTRO', 'observation_time' => now(),
             'bar_date' => app(BeiCalendarService::class)->getCurrentTradingDay(now('Asia/Jakarta'))->toDateString(),
             'open_price' => 3070, 'high_price' => 3140, 'low_price' => 3030,
-            'close_price' => 3090, 'volume' => 100, 'source' => 'Yahoo Finance',
+            'close_price' => 3090, 'volume' => 100, 'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'is_eod_final' => true, 'validation_status' => 'VALID',
         ]);
         $result = app(OnDemandResearchService::class)->handleResearchQuery('analisis saham PTRO', '5923895922', '5923895922', '210');
@@ -364,7 +413,11 @@ class UserWatchlistAndDynamicInstrumentTest extends TestCase
         MarketObservation::create([
             'ticker' => 'PTRO', 'observation_time' => now(), 'bar_date' => now()->toDateString(),
             'open_price' => 3070, 'high_price' => 3140, 'low_price' => 3030,
-            'close_price' => 3090, 'volume' => 100, 'source' => 'Yahoo Finance',
+            'close_price' => 3090, 'volume' => 100, 'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'is_eod_final' => true,
         ]);
 
@@ -395,7 +448,11 @@ class UserWatchlistAndDynamicInstrumentTest extends TestCase
             'low_price' => 254.0,
             'close_price' => 260.0,
             'volume' => 32107600,
-            'source' => 'Yahoo Finance',
+            'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'is_eod_final' => true,
         ]);
 
@@ -432,6 +489,12 @@ class UserWatchlistAndDynamicInstrumentTest extends TestCase
             'low_price' => 4950.0,
             'close_price' => 5100.0,
             'volume' => 50000000,
+            'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
+            'validation_status' => 'VALID',
             'is_eod_final' => true,
         ]);
 

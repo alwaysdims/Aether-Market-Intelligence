@@ -1,0 +1,95 @@
+{
+  "manifest_version": "AETHER_IDX_EDGE_RESEARCH_DATASET_V2",
+  "status": "VERIFIED_PAYLOAD_LINKAGE",
+  "eligibility": "SINGLE_TICKER_EXPLORATORY_PILOT_COMPLETED",
+  "production_publication": "DISABLED",
+  "source": {
+    "provider": "IDX Edge PRO",
+    "source_status": "PROVIDER_SUPPLIED",
+    "source_evidence": "public.market_observations rows with source=IDX Edge PRO, source_url=https://stock.arjum.com/api/history/BBCA",
+    "endpoint": "https://stock.arjum.com/api/history/BBCA",
+    "endpoint_parameters": {
+      "frame": "daily",
+      "limit": 500,
+      "adjusted": false,
+      "adjusted_companion": true
+    },
+    "archive_root": "E:\\Aether-Market-Intelligence\\dashboard\\storage\\app\\raw_immutable",
+    "archive_evidence": "Two complete 500-row payloads plus two limited six-row payloads contain immutable raw and adjusted archive paths and SHA-256 hashes.",
+    "fetched_at_evidence": "2026-11-21 10:27:18",
+    "sample_payload_hashes": {
+      "2026-11-20_raw": "3954d5cd477613cfc3e1b2f9c637b607080466b531d7175828a45880902a8060",
+      "2026-11-20_adjusted": "e2265948d2bc31270882d466b8faf946848aeaab249173784e04c1c124b09539"
+    }
+  },
+  "cohort": {
+    "tickers": ["BBCA"],
+    "selection_rule": "One ticker with valid RG raw and PROVIDER_BACK_ADJUSTED observations across the observed range.",
+    "observed_range": {
+      "db_first_bar": "2024-10-08",
+      "payload_first_bar": "2024-10-16",
+      "last_bar": "2026-11-20",
+      "raw_rows_db": 501,
+      "adjusted_rows_db": 501,
+      "payload_rows_raw": 500,
+      "payload_rows_adjusted": 500,
+      "payload_unique_dates": 500,
+      "payload_date_alignment": "raw and adjusted date arrays equal",
+      "db_paired_bar_dates": 501,
+      "payload_paired_bar_dates": 500,
+      "db_only_dates_not_linked_to_latest_payload": 8,
+      "archive_complete_rows": 501,
+      "archive_complete_scope": "500-row payloads cover 2024-10-16..2026-11-20; limited payloads cover 2024-10-08..2024-10-15"
+    },
+    "payload_reconciliation": {
+      "request_count": 4,
+      "requests": ["adjusted=false limit=500", "adjusted=true limit=500", "adjusted=false limit=20 start_date=2024-10-08 end_date=2024-10-15", "adjusted=true limit=20 start_date=2024-10-08 end_date=2024-10-15"],
+      "response_rows": [500, 500, 6, 6],
+      "deduplication": "0 duplicate dates within each payload; raw and adjusted arrays equal within each request; 501 final DB dates unique",
+      "payload_date_range": "2024-10-08..2026-11-20",
+      "gap_refresh": "Six provider bars per mode fetched for 2024-10-08, 2024-10-09, 2024-10-10, 2024-10-11, 2024-10-14, 2024-10-15; 2024-10-12 and 2024-10-13 are weekend dates",
+      "provenance_per_bar": "501 raw and 501 adjusted DB rows link to existing immutable payload hashes; one 500-row payload and one six-row payload per mode",
+      "status": "LINKAGE_COMPLETE"
+    },
+    "ticker_eligibility": {
+      "BBCA": {
+        "status": "ELIGIBLE_FOR_EXPLORATORY_RESEARCH",
+        "reason": "501 raw and 501 adjusted valid RG observations share 501 bar dates.",
+        "source": "PROVIDER_SUPPLIED",
+        "raw_adjusted_pair": "VERIFIED_ALL_501_DATES",
+        "full_history_archive": "VERIFIED_FOR_OBSERVED_501_BARS"
+      }
+    }
+  },
+  "adjustment_contract": {
+    "features": "PROVIDER_BACK_ADJUSTED only after raw/adjusted date pairing and hash receipt checks.",
+    "execution": "UNADJUSTED raw prices only.",
+    "target_labels": "UNADJUSTED raw execution bars.",
+    "corporate_action_inference": "PROHIBITED",
+    "difference_meaning": "Raw/adjusted differences do not identify a specific corporate action without provider evidence."
+  },
+  "calendar": {
+    "requested_range": "2024-10-08..2026-11-20",
+    "calendar_source": "BeiCalendarService",
+    "status": "PARTIAL_NOT_VERIFIED",
+    "reason": "Provider payload dates are verified, but canonical BEI holiday/session source covering 2024-2026 is not yet available.",
+    "missing_bar_rule": "Missing bar remains missing; no synthetic candle and no holiday assumption."
+  },
+  "validity_limits": [
+    "Provider payload linkage is complete for all 501 observed BBCA dates.",
+    "Canonical BEI session membership for 2024-2026 is not proven.",
+    "The provider returned six bars for 2024-10-08..2024-10-15; the two absent dates are weekend dates, but this is not a substitute for canonical calendar evidence.",
+    "2026-08-25 is the official Maulid Nabi holiday; 2026-08-26 is not listed as a holiday and is present in both raw and adjusted payloads.",
+    "Previous exclusion of 2026-08-26 was incorrect. Corrected 2026-11-23 after rechecking official IDX search-index text and original payload date.",
+    "Training-eligible rows: 506 archived bars, subject to five-session label maturity.",
+    "Raw and adjusted payloads have matching OHLC values for the 506 archived dates inspected; this does not prove absence of corporate actions or adjustment semantics.",
+    "Current V4 artifacts use legacy local CSV features and the frozen 10-ticker cohort, not this IDX Edge BBCA manifest.",
+    "Dataset is verified at provider-payload level, but not training-ready until calendar, feature-source alignment, and leakage gates pass.",
+    "Do not start training from this manifest."
+  ],
+  "next_gates": [
+    "Add official BEI holiday/session calendar covering 2024-2026.",
+    "Reconcile every missing date against canonical sessions without synthetic bars.",
+    "Recompute manifest hash after archive and calendar evidence are complete."
+  ]
+}

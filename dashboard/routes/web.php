@@ -1,14 +1,29 @@
 <?php
 
 use App\Http\Controllers\DashboardController;
+use App\Models\PredictionSignal;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [DashboardController::class, 'overview'])->name('dashboard.overview');
 Route::get('/market', [DashboardController::class, 'market'])->name('dashboard.market');
+Route::get('/screener', [DashboardController::class, 'screener'])->name('dashboard.screener');
 Route::get('/market/{ticker}', [DashboardController::class, 'tickerDetail'])->name('dashboard.ticker');
 Route::get('/news', [DashboardController::class, 'news'])->name('dashboard.news');
 Route::get('/history', [DashboardController::class, 'history'])->name('dashboard.history');
+Route::get('/signal-monitoring', function () {
+    $signals = PredictionSignal::query()
+        ->where(function ($query) {
+            $query->where('metadata->mode', 'EXPERIMENTAL')
+                ->orWhere('metadata->monitoring_cohort', 'SHADOW_TEST')
+                ->orWhere('metadata->origin', 'UNIVERSAL_RULE_BASED_SCREENING');
+        })
+        ->latest('decision_timestamp')
+        ->limit(100)
+        ->get();
+
+    return view('dashboard.signal_monitoring', compact('signals'));
+})->name('dashboard.signal_monitoring');
 Route::get('/research', [DashboardController::class, 'researchPage'])->name('dashboard.research');
 Route::get('/running-trade', [DashboardController::class, 'runningTradePage'])->name('dashboard.running_trade');
 Route::get('/health', [DashboardController::class, 'health'])->name('dashboard.health');
@@ -37,6 +52,7 @@ Route::get('/api/market/{ticker}/broker-summary', [DashboardController::class, '
 Route::get('/api/market/{ticker}/financial-statements', [DashboardController::class, 'financialStatementsData'])->name('dashboard.market.financial_statements');
 Route::get('/api/market/{ticker}/ownership', [DashboardController::class, 'ownershipData'])->name('dashboard.market.ownership');
 Route::get('/api/market/{ticker}/broker-accumulation', [DashboardController::class, 'brokerAccumulationData'])->name('dashboard.market.broker_accum_data');
+Route::get('/api/screener/latest', [DashboardController::class, 'screenerLatest'])->name('dashboard.screener.latest');
 Route::get('/api/market/running-trade-state', [DashboardController::class, 'runningTradeState'])->name('dashboard.market.running_trade_state');
 
 // API Health Check

@@ -1,0 +1,318 @@
+{
+  "schema_version": "1.0",
+  "status": "AUDIT_ONLY",
+  "universe": [
+    "BBCA",
+    "BBRI",
+    "BMRI",
+    "BBNI",
+    "ASII",
+    "TLKM",
+    "MAPI",
+    "ARTO",
+    "MEDC",
+    "SMRA"
+  ],
+  "dataset_hash": "076b6119fbf042f53d11a7bb377f549095a0dd0b68caafb32ba7e82928d3400c",
+  "calendar_status": "INTERNAL_BEI_CALENDAR_SERVICE_AVAILABLE; per-bar session membership not proven from CSV",
+  "tickers": [
+    {
+      "ticker": "BBCA",
+      "file": "data/cleaned/BBCA_cleaned.csv",
+      "rows": 1396,
+      "date_start": "2021-01-04",
+      "date_end": "2026-11-02",
+      "adjustment_mode": [
+        "unadjusted_nominal"
+      ],
+      "data_classification": [
+        "end_of_day"
+      ],
+      "duplicate_dates": 0,
+      "null_ohlcv": 0,
+      "calendar_gap_gt_3_days": 45,
+      "max_calendar_gap_days": 12,
+      "source_field_present": false,
+      "corporate_action_field_present": false,
+      "raw_adjusted_pair_status": "NOT VERIFIED",
+      "reason": "CSV has unadjusted_nominal only; source, corporate actions, canonical session membership, and adjusted companion not proven per ticker.",
+      "quarantine_file": "data/quarantine/conflict_BBCA_2026-10-30.json"
+    },
+    {
+      "ticker": "BBRI",
+      "file": "data/cleaned/BBRI_cleaned.csv",
+      "rows": 1389,
+      "date_start": "2021-01-04",
+      "date_end": "2026-11-02",
+      "adjustment_mode": [
+        "unadjusted_nominal"
+      ],
+      "data_classification": [
+        "end_of_day"
+      ],
+      "duplicate_dates": 0,
+      "null_ohlcv": 0,
+      "calendar_gap_gt_3_days": 50,
+      "max_calendar_gap_days": 12,
+      "source_field_present": false,
+      "corporate_action_field_present": false,
+      "raw_adjusted_pair_status": "NOT VERIFIED",
+      "reason": "CSV has unadjusted_nominal only; source, corporate actions, canonical session membership, and adjusted companion not proven per ticker.",
+      "quarantine_file": "data/quarantine/conflict_BBRI_2026-10-30.json"
+    },
+    {
+      "ticker": "BMRI",
+      "file": "data/cleaned/BMRI_cleaned.csv",
+      "rows": 1400,
+      "date_start": "2021-01-04",
+      "date_end": "2026-11-02",
+      "adjustment_mode": [
+        "unadjusted_nominal"
+      ],
+      "data_classification": [
+        "end_of_day"
+      ],
+      "duplicate_dates": 0,
+      "null_ohlcv": 0,
+      "calendar_gap_gt_3_days": 43,
+      "max_calendar_gap_days": 12,
+      "source_field_present": false,
+      "corporate_action_field_present": false,
+      "raw_adjusted_pair_status": "NOT VERIFIED",
+      "reason": "CSV has unadjusted_nominal only; source, corporate actions, canonical session membership, and adjusted companion not proven per ticker.",
+      "quarantine_file": "data/quarantine/conflict_BMRI_2026-10-30.json"
+    },
+    {
+      "ticker": "BBNI",
+      "file": "data/cleaned/BBNI_cleaned.csv",
+      "rows": 1400,
+      "date_start": "2021-01-04",
+      "date_end": "2026-11-02",
+      "adjustment_mode": [
+        "unadjusted_nominal"
+      ],
+      "data_classification": [
+        "end_of_day"
+      ],
+      "duplicate_dates": 0,
+      "null_ohlcv": 0,
+      "calendar_gap_gt_3_days": 44,
+      "max_calendar_gap_days": 12,
+      "source_field_present": false,
+      "corporate_action_field_present": false,
+      "raw_adjusted_pair_status": "NOT VERIFIED",
+      "reason": "CSV has unadjusted_nominal only; source, corporate actions, canonical session membership, and adjusted companion not proven per ticker.",
+      "quarantine_file": "data/quarantine/conflict_BBNI_2026-10-30.json"
+    },
+    {
+      "ticker": "ASII",
+      "file": "data/cleaned/ASII_cleaned.csv",
+      "rows": 1391,
+      "date_start": "2021-01-04",
+      "date_end": "2026-11-02",
+      "adjustment_mode": [
+        "unadjusted_nominal"
+      ],
+      "data_classification": [
+        "end_of_day"
+      ],
+      "duplicate_dates": 0,
+      "null_ohlcv": 0,
+      "calendar_gap_gt_3_days": 50,
+      "max_calendar_gap_days": 12,
+      "source_field_present": false,
+      "corporate_action_field_present": false,
+      "raw_adjusted_pair_status": "NOT VERIFIED",
+      "reason": "CSV has unadjusted_nominal only; source, corporate actions, canonical session membership, and adjusted companion not proven per ticker.",
+      "quarantine_file": "data/quarantine/conflict_ASII_2026-10-30.json"
+    },
+    {
+      "ticker": "TLKM",
+      "file": "data/cleaned/TLKM_cleaned.csv",
+      "rows": 1401,
+      "date_start": "2021-01-04",
+      "date_end": "2026-11-02",
+      "adjustment_mode": [
+        "unadjusted_nominal"
+      ],
+      "data_classification": [
+        "end_of_day"
+      ],
+      "duplicate_dates": 0,
+      "null_ohlcv": 0,
+      "calendar_gap_gt_3_days": 42,
+      "max_calendar_gap_days": 12,
+      "source_field_present": false,
+      "corporate_action_field_present": false,
+      "raw_adjusted_pair_status": "NOT VERIFIED",
+      "reason": "CSV has unadjusted_nominal only; source, corporate actions, canonical session membership, and adjusted companion not proven per ticker.",
+      "quarantine_file": "data/quarantine/conflict_TLKM_2026-10-30.json"
+    },
+    {
+      "ticker": "MAPI",
+      "file": "data/cleaned/MAPI_cleaned.csv",
+      "rows": 1403,
+      "date_start": "2021-01-04",
+      "date_end": "2026-11-02",
+      "adjustment_mode": [
+        "unadjusted_nominal"
+      ],
+      "data_classification": [
+        "end_of_day"
+      ],
+      "duplicate_dates": 0,
+      "null_ohlcv": 0,
+      "calendar_gap_gt_3_days": 42,
+      "max_calendar_gap_days": 12,
+      "source_field_present": false,
+      "corporate_action_field_present": false,
+      "raw_adjusted_pair_status": "NOT VERIFIED",
+      "reason": "CSV has unadjusted_nominal only; source, corporate actions, canonical session membership, and adjusted companion not proven per ticker.",
+      "quarantine_file": "data/quarantine/conflict_MAPI_2026-10-30.json"
+    },
+    {
+      "ticker": "ARTO",
+      "file": "data/cleaned/ARTO_cleaned.csv",
+      "rows": 1403,
+      "date_start": "2021-01-04",
+      "date_end": "2026-11-02",
+      "adjustment_mode": [
+        "unadjusted_nominal"
+      ],
+      "data_classification": [
+        "end_of_day"
+      ],
+      "duplicate_dates": 0,
+      "null_ohlcv": 0,
+      "calendar_gap_gt_3_days": 42,
+      "max_calendar_gap_days": 12,
+      "source_field_present": false,
+      "corporate_action_field_present": false,
+      "raw_adjusted_pair_status": "NOT VERIFIED",
+      "reason": "CSV has unadjusted_nominal only; source, corporate actions, canonical session membership, and adjusted companion not proven per ticker.",
+      "quarantine_file": "data/quarantine/conflict_ARTO_2026-10-30.json"
+    },
+    {
+      "ticker": "MEDC",
+      "file": "data/cleaned/MEDC_cleaned.csv",
+      "rows": 1397,
+      "date_start": "2021-01-04",
+      "date_end": "2026-11-02",
+      "adjustment_mode": [
+        "unadjusted_nominal"
+      ],
+      "data_classification": [
+        "end_of_day"
+      ],
+      "duplicate_dates": 0,
+      "null_ohlcv": 0,
+      "calendar_gap_gt_3_days": 44,
+      "max_calendar_gap_days": 12,
+      "source_field_present": false,
+      "corporate_action_field_present": false,
+      "raw_adjusted_pair_status": "NOT VERIFIED",
+      "reason": "CSV has unadjusted_nominal only; source, corporate actions, canonical session membership, and adjusted companion not proven per ticker.",
+      "quarantine_file": "data/quarantine/conflict_MEDC_2026-10-30.json"
+    },
+    {
+      "ticker": "SMRA",
+      "file": "data/cleaned/SMRA_cleaned.csv",
+      "rows": 1403,
+      "date_start": "2021-01-04",
+      "date_end": "2026-11-02",
+      "adjustment_mode": [
+        "unadjusted_nominal"
+      ],
+      "data_classification": [
+        "end_of_day"
+      ],
+      "duplicate_dates": 0,
+      "null_ohlcv": 0,
+      "calendar_gap_gt_3_days": 42,
+      "max_calendar_gap_days": 12,
+      "source_field_present": false,
+      "corporate_action_field_present": false,
+      "raw_adjusted_pair_status": "NOT VERIFIED",
+      "reason": "CSV has unadjusted_nominal only; source, corporate actions, canonical session membership, and adjusted companion not proven per ticker.",
+      "quarantine_file": "data/quarantine/conflict_SMRA_2026-10-30.json"
+    }
+  ],
+  "baseline": {
+    "tp_6": {
+      "evaluation_scope": "exploratory exposed benchmark",
+      "test_decisions": 4187,
+      "status_counts": {
+        "SL": 1238,
+        "EXPIRED": 2088,
+        "SL_GAP": 167,
+        "TP": 617,
+        "TP_GAP": 71,
+        "AMBIGUOUS": 6
+      },
+      "entry_confirmed": 4187,
+      "submitted_entries": 4187,
+      "executed_trades": 160,
+      "rejection_count": 4027,
+      "rejection_breakdown": {
+        "INSUFFICIENT_FUNDS": 3929,
+        "ALREADY_OPEN": 98
+      },
+      "portfolio_return_pct": -94.92,
+      "max_portfolio_drawdown_pct": 95.51,
+      "final_mtm_equity": 25420.45,
+      "trade_series_mean_net_return_pct": -1.698464
+    },
+    "tp_15": {
+      "evaluation_scope": "exploratory exposed benchmark",
+      "test_decisions": 4187,
+      "status_counts": {
+        "SL": 1268,
+        "EXPIRED": 2645,
+        "SL_GAP": 183,
+        "TP": 80,
+        "TP_GAP": 10,
+        "AMBIGUOUS": 1
+      },
+      "entry_confirmed": 4187,
+      "submitted_entries": 4187,
+      "executed_trades": 138,
+      "rejection_count": 4049,
+      "rejection_breakdown": {
+        "INSUFFICIENT_FUNDS": 3982,
+        "ALREADY_OPEN": 67
+      },
+      "portfolio_return_pct": -94.98,
+      "max_portfolio_drawdown_pct": 95.58,
+      "final_mtm_equity": 25109.8,
+      "trade_series_mean_net_return_pct": -1.804683
+    },
+    "tp_35": {
+      "evaluation_scope": "exploratory exposed benchmark",
+      "test_decisions": 4187,
+      "status_counts": {
+        "SL": 1269,
+        "EXPIRED": 2730,
+        "SL_GAP": 184,
+        "TP": 4
+      },
+      "entry_confirmed": 4187,
+      "submitted_entries": 4187,
+      "executed_trades": 136,
+      "rejection_count": 4051,
+      "rejection_breakdown": {
+        "INSUFFICIENT_FUNDS": 3984,
+        "ALREADY_OPEN": 67
+      },
+      "portfolio_return_pct": -94.97,
+      "max_portfolio_drawdown_pct": 95.57,
+      "final_mtm_equity": 25139.1,
+      "trade_series_mean_net_return_pct": -1.813535
+    }
+  },
+  "limitations": [
+    "Missing date is not classified as holiday.",
+    "Raw/adjusted pair not validated from backfill_status.",
+    "Feature/execution price relationship not proven for full cohort.",
+    "No independent untouched holdout."
+  ]
+}

@@ -20,6 +20,7 @@
  *   --process-outbox --job-id=1
  *   --provider-probe
  *   --research-request (JSON payload on stdin; dashboard request bridge)
+ *   --research-queue --limit=N
  *   --coverage-acl-audit
  *   --analysis-audit --tickers=BBCA
  *   --analysis-record-audit --analysis-id=152 --evidence-id=187
@@ -63,12 +64,16 @@ foreach (array_slice($argv, 1) as $arg) {
     }
 }
 
-if (! in_array($mode, ['--news', '--broker', '--narrative', '--telegram-chat', '--record-telegram-receipt', '--consultation-queue', '--telegram-audit', '--grounding-correction', '--requeue-consultation', '--recovery-consultation', '--reconcile-outbox', '--process-outbox', '--provider-probe', '--research-request', '--research-request-audit', '--research-request-status', '--research-acceptance-audit', '--coverage-session-audit', '--coverage-acl-audit', '--analysis-audit', '--analysis-record-audit', '--briefing-audit', '--briefing-acl-audit', '--briefing-slot-audit', '--news-audit', '--shadow-canary'], true)) {
+if (! in_array($mode, ['--news', '--broker', '--narrative', '--telegram-chat', '--record-telegram-receipt', '--consultation-queue', '--telegram-audit', '--grounding-correction', '--requeue-consultation', '--recovery-consultation', '--reconcile-outbox', '--process-outbox', '--provider-probe', '--research-request', '--research-queue', '--research-request-audit', '--research-request-status', '--research-acceptance-audit', '--coverage-session-audit', '--coverage-acl-audit', '--analysis-audit', '--analysis-record-audit', '--briefing-audit', '--briefing-acl-audit', '--briefing-slot-audit', '--news-audit', '--shadow-canary', '--ml-screen-bbca', '--ml-screen-bbca-dry', '--screen-universal', '--process-queue'], true)) {
     fwrite(STDERR, "app writer disabled; supported modes: --news, --broker, --narrative, --telegram-chat, --record-telegram-receipt, --consultation-queue, --telegram-audit, --requeue-consultation, --recovery-consultation, --reconcile-outbox, --process-outbox\n");
     exit(2);
 }
 
 $limit = isset($options['limit']) ? (int) $options['limit'] : 10;
+if ($mode === '--process-queue' && ($limit < 1 || $limit > 5)) {
+    fwrite(STDERR, "process-queue --limit must be 1..5\n");
+    exit(2);
+}
 if ($mode === '--news' && ($limit < 1 || $limit > 20)) {
     fwrite(STDERR, "news --limit must be 1..20\n");
     exit(2);
@@ -210,10 +215,15 @@ foreach ([
     'SESSION_DRIVER' => 'file',
     'QUEUE_CONNECTION' => 'sync',
     'AI_LIVE_INFERENCE_ENABLED' => 'false',
-    'AI_LIVE_INFERENCE_ON_DEMAND_ENABLED' => in_array($mode, ['--telegram-chat', '--narrative', '--consultation-queue', '--requeue-consultation', '--recovery-consultation', '--research-request'], true) ? 'true' : 'false',
+    'AI_LIVE_INFERENCE_ON_DEMAND_ENABLED' => in_array($mode, ['--telegram-chat', '--narrative', '--consultation-queue', '--requeue-consultation', '--recovery-consultation', '--research-request', '--research-queue'], true) ? 'true' : 'false',
+    'DASHBOARD_AI_ON_DEMAND_ENABLED' => in_array($mode, ['--telegram-chat', '--narrative', '--consultation-queue', '--requeue-consultation', '--recovery-consultation', '--research-request', '--research-queue'], true) ? 'true' : 'false',
     'AI_LIVE_INFERENCE_EOD_ENABLED' => 'false',
+    'AI_ROUTER_TIMEOUT' => '60',
+    'CONSULTATION_AI_TIMEOUT' => '60',
+    'CONSULTATION_AI_MAX_RETRIES' => '0',
     'HERMES_ORCHESTRATOR_ENABLED' => 'false',
-    'IDX_EDGE_ENABLED' => in_array($mode, ['--broker', '--research-request', '--provider-probe'], true) ? 'true' : 'false',
+    'IDX_EDGE_ENABLED' => in_array($mode, ['--broker', '--research-request', '--provider-probe', '--ml-screen-bbca', '--ml-screen-bbca-dry', '--process-queue'], true) ? 'true' : 'false',
+    'IDX_EDGE_SCREENER_ENABLED' => in_array($mode, ['--provider-probe'], true) ? 'true' : 'false',
     'TELEGRAM_ENABLED' => 'false',
 ] as $key => $value) {
     putenv($key.'='.$value);
@@ -273,7 +283,16 @@ if ($mode === '--coverage-acl-audit') {
         'counts' => [
             'registries' => (int) \Illuminate\Support\Facades\DB::scalar('select count(*) from public.idx_company_registries'),
             'observed_idx_edge_instruments' => (int) \Illuminate\Support\Facades\DB::scalar("select count(distinct ticker) from public.market_observations where source = 'IDX Edge PRO' and ticker not in ('^JKSE', 'JKSE', 'IHSG')"),
+            'ingestion_jobs' => [
+                'enqueued' => (int) \Illuminate\Support\Facades\DB::scalar('select count(*) from public.idx_ingestion_jobs'),
+                'pending' => (int) \Illuminate\Support\Facades\DB::scalar("select count(*) from public.idx_ingestion_jobs where status = 'PENDING'"),
+                'running' => (int) \Illuminate\Support\Facades\DB::scalar("select count(*) from public.idx_ingestion_jobs where status = 'RUNNING'"),
+                'completed' => (int) \Illuminate\Support\Facades\DB::scalar("select count(*) from public.idx_ingestion_jobs where status = 'COMPLETED'"),
+                'partial' => (int) \Illuminate\Support\Facades\DB::scalar("select count(*) from public.idx_ingestion_jobs where status = 'PARTIAL'"),
+                'failed' => (int) \Illuminate\Support\Facades\DB::scalar("select count(*) from public.idx_ingestion_jobs where status = 'FAILED'"),
+            ],
         ],
+        'recent_ingestion_jobs' => \Illuminate\Support\Facades\DB::select("select ticker, status, attempt_count, checkpoint_data->>'partial_reason' as partial_reason, updated_at from public.idx_ingestion_jobs order by id desc limit 5"),
         'registries_without_idx_edge_observation' => array_map(static fn ($row) => $row->ticker, $missing),
         'acl' => $privileges,
         'writes_executed' => false,
@@ -339,10 +358,18 @@ if ($mode === '--provider-probe') {
         'retrieved_at_utc' => gmdate('c'),
         'provider' => 'IDX_EDGE',
         'endpoints' => $results,
-        'flags_enabled' => ['insiders' => false, 'screener' => false, 'movers' => false],
+        'flags_enabled' => [
+            'insiders' => (bool) config('services.idx_edge.endpoints.insiders', false),
+            'screener' => (bool) config('services.idx_edge.endpoints.screener', false),
+            'movers' => (bool) config('services.idx_edge.endpoints.movers', false),
+        ],
         'secret_printed' => false,
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL);
-    echo json_encode(['status' => 'READ_ONLY', 'receipt_path' => $receiptPath, 'endpoints' => $results, 'flags_enabled' => ['insiders' => false, 'screener' => false, 'movers' => false], 'writes_executed' => false, 'secret_printed' => false], JSON_THROW_ON_ERROR).PHP_EOL;
+    echo json_encode(['status' => 'READ_ONLY', 'receipt_path' => $receiptPath, 'endpoints' => $results, 'flags_enabled' => [
+            'insiders' => (bool) config('services.idx_edge.endpoints.insiders', false),
+            'screener' => (bool) config('services.idx_edge.endpoints.screener', false),
+            'movers' => (bool) config('services.idx_edge.endpoints.movers', false),
+        ], 'writes_executed' => false, 'secret_printed' => false], JSON_THROW_ON_ERROR).PHP_EOL;
     exit(0);
 }
 
@@ -1007,6 +1034,17 @@ if ($mode === '--telegram-audit') {
         '--dry-run' => $dryShadowCanary,
     ];
     $status = \Illuminate\Support\Facades\Artisan::call('hermes:shadow-canary', $arguments);
+} elseif (in_array($mode, ['--ml-screen-bbca', '--ml-screen-bbca-dry'], true)) {
+    $status = \Illuminate\Support\Facades\Artisan::call('aether:screen-ml-bbca', [
+        '--live' => $mode === '--ml-screen-bbca',
+        '--dry-run' => $mode === '--ml-screen-bbca-dry',
+    ]);
+} elseif ($mode === '--screen-universal') {
+    $status = \Illuminate\Support\Facades\Artisan::call('aether:screen-universal', ['--live' => true]);
+} elseif ($mode === '--process-queue') {
+    $status = \Illuminate\Support\Facades\Artisan::call('idx:process-queue', ['--limit' => $limit]);
+} elseif ($mode === '--research-queue') {
+    $status = \Illuminate\Support\Facades\Artisan::call('aether:process-research-queue', ['--limit' => max(1, min($limit, 5))]);
 } elseif ($mode === '--news') {
     $status = \Illuminate\Support\Facades\Artisan::call('hermes:ingest-news', ['--limit' => $limit]);
 } elseif ($mode === '--broker') {

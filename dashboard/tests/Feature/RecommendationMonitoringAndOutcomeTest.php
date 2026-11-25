@@ -45,9 +45,11 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
             'expires_at' => $publishedAt->copy()->addDays(14),
             'monitoring_status' => 'ACTIVE',
             'evaluation_status' => 'PENDING',
+            'telegram_message_id' => 'TEST_RECEIPT',
             'target_price' => 5100.0,
             'invalidation_price' => 4800.0,
             'metadata' => [
+                'delivery_status' => 'SENT',
                 'strategy' => 'SWING',
                 'origin' => 'DETERMINISTIC_SCREENING_RULE',
             ],
@@ -58,6 +60,7 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
             'ticker' => 'BBCA',
             'monitoring_status' => 'ACTIVE',
             'evaluation_status' => 'PENDING',
+            'telegram_message_id' => 'TEST_RECEIPT',
         ]);
         $this->assertEquals(5000.0, $sig->reference_price);
         $this->assertEquals(5100.0, $sig->target_price);
@@ -93,6 +96,8 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
             'expires_at' => $publishedAt->copy()->addDays(14),
             'monitoring_status' => 'ACTIVE',
             'evaluation_status' => 'PENDING',
+            'telegram_message_id' => 'TEST_RECEIPT',
+            'metadata' => ['delivery_status' => 'SENT'],
             'target_price' => 5200.0,
             'invalidation_price' => 4900.0,
         ]);
@@ -101,7 +106,7 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
         MarketObservation::create([
             'ticker' => 'BBCA',
             'bar_date' => '2026-10-30',
-            'observation_time' => Carbon::parse('2026-10-30 16:05:00', 'Asia/Jakarta'),
+            'observation_time' => Carbon::parse('2026-10-30 16:05:00', 'Asia/Jakarta')->utc(),
             'open_price' => 5000.0,
             'high_price' => 5250.0,
             'low_price' => 4950.0,
@@ -109,6 +114,7 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
             'volume' => 1000000,
             'is_eod_final' => true,
             'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
             'validation_status' => 'VALID',
         ]);
 
@@ -152,6 +158,8 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
             'expires_at' => $publishedAt->copy()->addDays(14),
             'monitoring_status' => 'ACTIVE',
             'evaluation_status' => 'PENDING',
+            'telegram_message_id' => 'TEST_RECEIPT',
+            'metadata' => ['delivery_status' => 'SENT'],
             'target_price' => 3100.0,
             'invalidation_price' => 2900.0,
         ]);
@@ -160,7 +168,7 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
         MarketObservation::create([
             'ticker' => 'TLKM',
             'bar_date' => '2026-10-30',
-            'observation_time' => Carbon::parse('2026-10-30 16:05:00', 'Asia/Jakarta'),
+            'observation_time' => Carbon::parse('2026-10-30 16:05:00', 'Asia/Jakarta')->utc(),
             'open_price' => 3000.0,
             'high_price' => 3150.0,
             'low_price' => 2850.0,
@@ -168,6 +176,7 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
             'volume' => 2000000,
             'is_eod_final' => true,
             'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
             'validation_status' => 'VALID',
         ]);
 
@@ -213,13 +222,15 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
             'expires_at' => $publishedAt->copy()->addDays(14),
             'monitoring_status' => 'ACTIVE',
             'evaluation_status' => 'PENDING',
+            'telegram_message_id' => 'TEST_RECEIPT',
+            'metadata' => ['delivery_status' => 'SENT'],
         ]);
 
         // EOD bar on due date showing close of 7200 (+2.86%)
         MarketObservation::create([
             'ticker' => 'BMRI',
             'bar_date' => '2026-10-30',
-            'observation_time' => Carbon::parse('2026-10-30 16:05:00', 'Asia/Jakarta'),
+            'observation_time' => Carbon::parse('2026-10-30 16:05:00', 'Asia/Jakarta')->utc(),
             'open_price' => 7050.0,
             'high_price' => 7250.0,
             'low_price' => 7000.0,
@@ -227,6 +238,7 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
             'volume' => 5000000,
             'is_eod_final' => true,
             'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
             'validation_status' => 'VALID',
         ]);
 
@@ -270,6 +282,8 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
             'expires_at' => $publishedAt->copy()->addDays(14),
             'monitoring_status' => 'ACTIVE',
             'evaluation_status' => 'PENDING',
+            'telegram_message_id' => 'TEST_RECEIPT',
+            'metadata' => ['delivery_status' => 'SENT'],
         ]);
 
         $monitor = app(MarketMonitoringService::class);
@@ -311,6 +325,8 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
             'expires_at' => $expiresAt,
             'monitoring_status' => 'ACTIVE',
             'evaluation_status' => 'PENDING',
+            'telegram_message_id' => 'TEST_RECEIPT',
+            'metadata' => ['delivery_status' => 'SENT'],
         ]);
 
         // No observations exist for ZZZZ between published_at and expires_at
@@ -354,6 +370,8 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
             'expires_at' => $publishedAt->copy()->addDays(14),
             'monitoring_status' => 'ACTIVE',
             'evaluation_status' => 'PENDING',
+            'telegram_message_id' => 'TEST_RECEIPT',
+            'metadata' => ['delivery_status' => 'SENT'],
             'target_price' => 256.0,
             'invalidation_price' => 236.0,
             'metadata' => [
@@ -403,6 +421,8 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
             'expires_at' => $expiresAt,
             'monitoring_status' => 'ACTIVE',
             'evaluation_status' => 'PENDING',
+            'telegram_message_id' => 'TEST_RECEIPT',
+            'metadata' => ['delivery_status' => 'SENT'],
             'target_price' => 1350.0,
             'invalidation_price' => 1150.0,
         ]);
@@ -419,6 +439,7 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
             'volume' => 1000000,
             'is_eod_final' => true,
             'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
             'validation_status' => 'VALID',
         ]);
         MarketObservation::create([
@@ -432,6 +453,7 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
             'volume' => 1200000,
             'is_eod_final' => true,
             'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
             'validation_status' => 'VALID',
         ]);
 
@@ -497,7 +519,7 @@ class RecommendationMonitoringAndOutcomeTest extends TestCase
             'predicted_horizon_days' => 5,
             'evaluation_due_date' => '2026-10-23',
             'published_at' => Carbon::parse('2026-10-16 16:05:00', 'Asia/Jakarta'),
-            'expires_at' => Carbon::parse('2026-10-30 16:05:00', 'Asia/Jakarta'),
+            'expires_at' => Carbon::parse('2026-10-30 16:05:00', 'Asia/Jakarta')->utc(),
             'monitoring_status' => 'NOT_MONITORED',
             'evaluation_status' => 'PENDING',
             'metadata' => [

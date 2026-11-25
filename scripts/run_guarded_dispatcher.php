@@ -16,8 +16,9 @@ $role = 'aether_ingestion';
 $credentialFile = $root.'/storage/incidents/20261110_operational_data_loss/ingestion-credentials/aether_ingestion.dpapi.txt';
 $decryptor = $root.'/scripts/decrypt_ingestion_secret.ps1';
 $localAppData = str_replace('\\', '/', (string) getenv('LOCALAPPDATA'));
-$runtime = ($localAppData !== '' ? $localAppData : $root).'/Aether-Market-Intelligence/recovery/runtime/dispatcher';
-$configCache = ($localAppData !== '' ? $localAppData : $root).'/Aether-Market-Intelligence/recovery/bootstrap-cache/dispatcher-config.php';
+$runtimeRoot = ($localAppData !== '' ? $localAppData : $root).'/Aether-Market-Intelligence/recovery/runtime/dispatcher';
+$runtime = $runtimeRoot.'/'.getmypid().'_'.bin2hex(random_bytes(4));
+$configCache = ($localAppData !== '' ? $localAppData : $root).'/Aether-Market-Intelligence/recovery/bootstrap-cache/dispatcher-'.getmypid().'-'.bin2hex(random_bytes(4)).'.php';
 
 function dispatcherAbort(string $reason, int $code): never
 {
@@ -99,6 +100,9 @@ $environment = [
     'AI_LIVE_INFERENCE_EOD_ENABLED' => 'false',
     'AI_ROUTER_ENDPOINT' => 'http://127.0.0.1:20128/v1',
     'AI_MODEL_ID' => 'ag/gemini-3.8-flash-high',
+    'AI_ROUTER_TIMEOUT' => '60',
+    'CONSULTATION_AI_TIMEOUT' => '60',
+    'CONSULTATION_AI_MAX_RETRIES' => '0',
     'AI_API_KEY' => $routerKey,
     'HERMES_ORCHESTRATOR_ENABLED' => 'false',
     // Research worker needs provider access; EOD remains owned by guarded EOD runner.

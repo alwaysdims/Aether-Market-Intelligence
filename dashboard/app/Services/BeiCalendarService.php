@@ -7,27 +7,33 @@ use Carbon\CarbonInterface;
 
 class BeiCalendarService
 {
-    /**
-     * Official Indonesian public holidays / BEI non-trading days for 2026.
-     * Matches E:\hermes-stock-agent\src\calendar_utils.py.
-     */
+    public const CALENDAR_VERSION = 'BEI_OFFICIAL_HOLIDAY_2024_2026_V1';
+
+    public const BEI_HOLIDAYS_2024 = [
+        '2024-01-01', '2024-02-08', '2024-02-09', '2024-03-11', '2024-03-12',
+        '2024-04-08', '2024-04-09', '2024-04-10', '2024-04-11', '2024-04-12', '2024-04-15',
+        '2024-05-01', '2024-05-09', '2024-05-10', '2024-05-23', '2024-05-24',
+        '2024-06-17', '2024-06-18', '2024-09-16', '2024-11-27', '2024-12-25', '2024-12-26', '2024-12-31',
+    ];
+
+    public const BEI_HOLIDAYS_2025 = [
+        '2025-01-01', '2025-01-27', '2025-01-28', '2025-01-29', '2025-03-28', '2025-03-31',
+        '2025-04-01', '2025-04-02', '2025-04-03', '2025-04-04', '2025-04-07', '2025-04-18',
+        '2025-05-01', '2025-05-12', '2025-05-13', '2025-05-29', '2025-05-30',
+        '2025-06-06', '2025-06-09', '2025-06-27', '2025-09-05', '2025-12-25', '2025-12-26', '2025-12-31',
+    ];
+
     public const BEI_HOLIDAYS_2026 = [
-        '2026-01-01',  // Tahun Baru Masehi
-        '2026-01-16',  // Isra Mi'raj
-        '2026-02-17',  // Tahun Baru Imlek
-        '2026-03-20',  // Hari Suci Nyepi
-        '2026-03-21',  // Hari Raya Idul Fitri
-        '2026-03-22',  // Cuti Bersama Idul Fitri
-        '2026-03-23',  // Cuti Bersama Idul Fitri
-        '2026-04-03',  // Wafat Yesus Kristus
-        '2026-05-01',  // Hari Buruh
-        '2026-05-14',  // Kenaikan Yesus Kristus
-        '2026-05-28',  // Hari Raya Idul Adha
-        '2026-06-01',  // Hari Lahir Pancasila
-        '2026-06-16',  // Tahun Baru Islam
-        '2026-08-17',  // Hari Kemerdekaan RI
-        '2026-08-26',  // Maulid Nabi Muhammad SAW
-        '2026-12-25',  // Hari Raya Natal
+        '2026-01-01', '2026-01-16', '2026-02-16', '2026-02-17', '2026-03-18', '2026-03-19',
+        '2026-03-20', '2026-03-23', '2026-03-24', '2026-04-03', '2026-05-01', '2026-05-14',
+        '2026-05-15', '2026-05-27', '2026-05-28', '2026-06-01', '2026-06-16', '2026-08-17',
+        '2026-08-25', '2026-12-24', '2026-12-25', '2026-12-31',
+    ];
+
+    public const BEI_HOLIDAYS = [
+        ...self::BEI_HOLIDAYS_2024,
+        ...self::BEI_HOLIDAYS_2025,
+        ...self::BEI_HOLIDAYS_2026,
     ];
 
     /**
@@ -44,7 +50,7 @@ class BeiCalendarService
 
         $dateStr = $dt->format('Y-m-d');
 
-        return ! in_array($dateStr, self::BEI_HOLIDAYS_2026, true);
+        return ! in_array($dateStr, self::BEI_HOLIDAYS, true);
     }
 
     /**
@@ -88,7 +94,7 @@ class BeiCalendarService
         if ($dt->isSaturday() || $dt->isSunday()) {
             return 'WEEKEND_'.strtoupper($dt->format('l'));
         }
-        if (in_array($dt->format('Y-m-d'), self::BEI_HOLIDAYS_2026, true)) {
+        if (in_array($dt->format('Y-m-d'), self::BEI_HOLIDAYS, true)) {
             return 'BEI_HOLIDAY';
         }
 

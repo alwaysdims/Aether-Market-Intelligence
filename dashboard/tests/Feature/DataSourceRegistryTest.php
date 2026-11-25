@@ -27,7 +27,7 @@ class DataSourceRegistryTest extends TestCase
 
         $this->assertSame($count1, $count2);
         $this->assertSame(0, $res2['created']);
-        $this->assertSame(16, $count1);
+        $this->assertSame(17, $count1);
     }
 
     public function test_registry_contains_proper_status_separation(): void

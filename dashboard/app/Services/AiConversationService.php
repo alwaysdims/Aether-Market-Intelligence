@@ -22,9 +22,9 @@ class AiConversationService
     public function __construct()
     {
         $this->endpoint = (string) config('services.consultation_ai.endpoint', 'http://127.0.0.1:20128/v1');
-        $this->modelId = (string) config('services.consultation_ai.model_id', 'gemini/gemini-3.6-flash');
+        $this->modelId = (string) config('services.consultation_ai.model_id', 'ag/gemini-3.8-flash-high');
         $this->apiKey = (string) config('services.consultation_ai.api_key', '');
-        $this->timeout = (int) config('services.consultation_ai.timeout', 25);
+        $this->timeout = (int) config('services.consultation_ai.timeout', 60);
         $this->onDemandEnabled = (bool) config('services.ai_router.on_demand_enabled', true);
     }
 

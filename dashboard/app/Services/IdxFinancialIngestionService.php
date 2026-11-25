@@ -82,9 +82,23 @@ class IdxFinancialIngestionService
             }
         }
 
-        $fundamental = $this->fundamentalService->syncAnnualStatements($ticker, 2);
+        try {
+            $fundamental = $this->fundamentalService->syncAnnualStatements($ticker, 2);
+        } catch (\Throwable $error) {
+            logger()->warning('[IdxFinancialIngestion] fundamental component unavailable: '.$error::class);
+            $fundamental = [
+                'success' => false,
+                'error_type' => 'PERMISSION_DENIED',
+                'message' => 'Fundamental component unavailable under runtime role.',
+            ];
+        }
         $fundamentalStatus = ($fundamental['success'] ?? false) ? 'PROVIDER_SUPPLIED' : 'DATA_UNAVAILABLE';
-        $metrics = $this->metricsService->calculateForTicker($ticker);
+        try {
+            $metrics = $this->metricsService->calculateForTicker($ticker);
+        } catch (\Throwable $error) {
+            logger()->warning('[IdxFinancialIngestion] technical component unavailable: '.$error::class);
+            $metrics = null;
+        }
 
         return [
             'success' => true,

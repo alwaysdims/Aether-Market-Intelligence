@@ -21,10 +21,21 @@ class CanonicalMarketReadService
         }
         $targetTickers = in_array($tickerUpper, ['IHSG', '^JKSE', 'JKSE']) ? ['IHSG', '^JKSE', 'JKSE'] : [$tickerUpper];
 
-        return $this->query($interval, $classification, $asOf, $adjustmentMode)
+        $base = MarketObservation::query()
             ->whereIn('ticker', $targetTickers)
+            ->where('interval', $interval)
+            ->where('data_classification', $classification)
+            ->where('source', 'IDX Edge PRO')
+            ->where('adjustment_mode', $adjustmentMode)
+            ->when($asOf !== null, fn ($q) => $q->where('observation_time', '<=', $asOf))
             ->orderByRaw("CASE WHEN ticker = 'IHSG' THEN 1 ELSE 2 END")
-            ->first();
+            ->orderByDesc('bar_date')
+            ->orderByDesc('is_eod_final')
+            ->orderByDesc('observation_time')
+            ->orderByDesc('id');
+
+        return (clone $base)->where('validation_status', 'VALID')->first()
+            ?? (clone $base)->whereIn('validation_status', ['CONFLICTED', 'PROVISIONAL'])->first();
     }
 
     public function latestNominal(string $ticker, string $interval = '1d', string $classification = 'PUBLIC_MARKET_EOD', ?string $asOf = null): ?MarketObservation

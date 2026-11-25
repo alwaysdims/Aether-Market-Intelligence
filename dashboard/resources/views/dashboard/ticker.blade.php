@@ -15,29 +15,12 @@
                     <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-[#0D2B4E] text-[#F5F1E8]/70 border border-[#F5F1E8]/10 uppercase">
                         {{ $company?->listing_board ?? 'Papan Utama' }}
                     </span>
-                    <span class="px-2 py-0.5 rounded text-[10px] font-mono border
-                        {{ ($freshness['status'] ?? '') === 'AVAILABLE_FRESH' ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/30' : 'bg-amber-950/60 text-amber-300 border-amber-500/30' }}">
-                        {{ $freshness['status'] ?? 'NOT_VERIFIED' }}
-                    </span>
-                    @if($latestObs && $latestObs->validation_status === 'CONFLICTED')
-                        <span class="px-2 py-0.5 rounded text-[10px] font-mono border bg-rose-950/80 text-rose-300 border-rose-500/40" title="{{ $latestObs->conflict_reason ?? 'Terdeteksi anomali/konflik data antar-papan atau antar-sumber' }}">
-                            DATA_CONFLICTED
-                        </span>
-                    @endif
                 </div>
                 <h2 class="text-sm font-semibold text-[#F5F1E8]">
                     {{ $company?->company_name ?? 'Emiten Belum Terdaftar di Registri Sekunder' }}
                 </h2>
-                <div class="flex flex-wrap items-center gap-2 text-xs text-[#F5F1E8]/50">
-                    <span>Sektor: <strong class="text-[#F5F1E8]/80">{{ $company?->sector ?: '-' }}</strong></span>
-                    <span>&bull;</span>
-                    <span>Industri: <strong class="text-[#F5F1E8]/80">{{ ($company?->industry && $company->industry !== $company->sector) ? $company->industry : 'Belum tersedia' }}</strong></span>
-                    <span>&bull;</span>
-                    <span>Tanggal IPO: <strong class="text-[#F5F1E8]/80 font-mono">{{ $company?->listing_date ? $company->listing_date->format('d M Y') : 'Belum tersedia' }}</strong></span>
-                    <span>&bull;</span>
-                    <span>Sumber: <strong id="marketDataSource" class="text-[#F5F1E8]/80 font-mono">{{ $latestObs?->source ?? 'DATA_NOT_AVAILABLE' }}</strong></span>
-                    <span>&bull;</span>
-                    <span id="marketConnectionStatus" class="font-mono">INTERNAL_POLLING</span>
+                <div class="text-xs text-[#F5F1E8]/50">
+                    Harga terakhir berasal dari API IDX Edge.
                 </div>
             </div>
 
@@ -48,8 +31,8 @@
                     <span class="text-[10px] uppercase font-mono text-[#F5F1E8]/40 block">Harga Penutupan Terkini (EOD)</span>
                     <div class="flex items-baseline space-x-2 justify-end">
                         <span class="text-xl font-bold text-[#F5F1E8] font-mono tabular-nums">
-                            @if($latestObs && $latestObs->close_price)
-                                Rp {{ number_format($latestObs->close_price, 0, ',', '.') }}
+                            @if($latestPrice !== null)
+                                Rp {{ number_format($latestPrice, 0, ',', '.') }}
                             @else
                                 <span class="text-xs text-[#F5F1E8]/30 font-mono">DATA_NOT_AVAILABLE</span>
                             @endif
@@ -74,29 +57,6 @@
                         <div class="text-[10px] font-mono {{ $priceChanges['change_vs_open_pct'] > 0 ? 'text-emerald-400/80' : ($priceChanges['change_vs_open_pct'] < 0 ? 'text-rose-400/80' : 'text-[#F5F1E8]/40') }}">
                             Intraday vs Open: {{ $priceChanges['change_vs_open_pct'] > 0 ? '+' : '' }}{{ number_format($priceChanges['change_vs_open_pct'], 2, ',', '.') }}%
                         </div>
-                    @endif
-                    <span class="text-[9px] text-[#F5F1E8]/30 font-mono block mt-0.5">
-                        Bar Sesi: {{ $latestObs?->bar_date ? $latestObs->bar_date->format('Y-m-d') : '-' }} &bull; Vol: {{ $latestObs?->volume ? number_format($latestObs->volume, 0, ',', '.') . ' lembar' : 'N/A' }}
-                    </span>
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="flex items-center space-x-2">
-                    <button onclick="toggleWatchlist('{{ $ticker }}', this)" title="{{ $inWatchlist ? 'Dalam Pemantauan Aktif' : 'Tambahkan ke Pemantauan' }}" class="px-3 py-2 rounded border text-xs font-medium transition flex items-center {{ $inWatchlist ? 'bg-[#E5C49B]/10 text-[#E5C49B] border-[#E5C49B]/40' : 'bg-[#0D2B4E] text-[#F5F1E8]/70 border-[#F5F1E8]/15 hover:text-[#E5C49B]' }}">
-                        <svg class="w-3.5 h-3.5 mr-1.5 fill-current" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
-                        {{ $inWatchlist ? 'Dipantau' : '+ Pantau' }}
-                    </button>
-
-                    @if($aiConclusion['header']['can_request_research'])
-                        <a href="{{ route('dashboard.research', ['ticker' => $ticker]) }}" class="px-3 py-2 bg-[#E5C49B] hover:bg-[#D6B284] text-[#05152B] rounded text-xs font-semibold tracking-wide transition flex items-center shadow-sm">
-                            <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                            Riset AI
-                        </a>
-                    @else
-                        <button disabled title="Instrumen belum terdaftar di registri BEI. Riset dinonaktifkan sebelum validasi sah." class="px-3 py-2 bg-[#05152B] border border-[#F5F1E8]/10 text-[#F5F1E8]/40 rounded text-xs font-mono cursor-not-allowed flex items-center">
-                            <svg class="w-3.5 h-3.5 mr-1.5 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m0 0v2m0-2h2m-2 0H10m11-3.5a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            Riset Terkunci (Ticker Tak Dikenal)
-                        </button>
                     @endif
                 </div>
             </div>

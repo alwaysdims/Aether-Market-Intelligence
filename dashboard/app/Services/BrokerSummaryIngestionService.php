@@ -25,7 +25,16 @@ class BrokerSummaryIngestionService
         $end = Carbon::parse($endDate)->startOfDay();
         $start = $end->copy()->subDays(6);
 
-        return $this->client->brokerSummary($ticker, $start->toDateString(), 'all', 50, $end->toDateString(), true);
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            $result = $this->client->brokerSummary($ticker, $start->toDateString(), 'all', 50, $end->toDateString(), true);
+            if (($result['error_type'] ?? null) !== 'LOCAL_RATE_LIMIT' || $attempt === 3) {
+                return $result;
+            }
+
+            sleep(max(1, (int) ($result['available_in'] ?? 1) + 1));
+        }
+
+        return ['success' => false, 'error_type' => 'FETCH_FAILED', 'message' => 'Broker summary retry exhausted.'];
     }
 
     /**

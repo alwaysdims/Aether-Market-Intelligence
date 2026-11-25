@@ -168,17 +168,17 @@ class TelegramTradingPlanTest extends TestCase
         $plan0915 = $this->service->generateOpeningScreeningPlan($nowWib);
         $text0915 = $this->service->renderTelegramTradingPlan($plan0915, $nowWib);
 
-        $this->assertStringContainsString('TRADING PLAN — SCREENING INTRADAY PEMBUKAAN (09:15 WIB)', $text0915);
-        $this->assertStringContainsString('DATA_CAPABILITY_BLOCKED', $text0915);
+        $this->assertStringContainsString('TRADING PLAN — WATCHLIST RISET EOD (09:15 WIB)', $text0915);
+        $this->assertStringContainsString('NO_SETUP_FOUND', $text0915);
 
         // BSJP
         $nowWib1515 = Carbon::parse('2026-11-04 15:15:00', 'Asia/Jakarta');
         $planBsjp = $this->service->generateBsjpPlan($nowWib1515);
         $textBsjp = $this->service->renderTelegramTradingPlan($planBsjp, $nowWib1515);
 
-        $this->assertStringContainsString('STATUS CAPABILITY BSJP (15:15 WIB)', $textBsjp);
-        $this->assertStringContainsString('DATA_CAPABILITY_BLOCKED', $textBsjp);
-        $this->assertStringContainsString('BSJP ditahan: observasi intraday RG tervalidasi dan fresh belum tersedia', $textBsjp);
+        $this->assertStringContainsString('TRADING PLAN — WATCHLIST RISET EOD (15:15 WIB)', $textBsjp);
+        $this->assertStringContainsString('NO_SETUP_FOUND', $textBsjp);
+        $this->assertStringContainsString('BSJP live intraday tidak terbit karena board RG belum terverifikasi', $textBsjp);
     }
 
     public function test_outbox_publish_and_rejection_of_stale_alert(): void
@@ -297,7 +297,7 @@ class TelegramTradingPlanTest extends TestCase
         MarketObservation::create([
             'ticker' => 'TLKM',
             'bar_date' => '2026-11-04',
-            'observation_time' => Carbon::parse('2026-11-04 09:30:00', 'Asia/Jakarta'),
+            'observation_time' => Carbon::parse('2026-11-04 09:30:00', 'Asia/Jakarta')->utc(),
             'open_price' => 1970,
             'high_price' => 1980, // Belum menyentuh 2000
             'low_price' => 1930,  // Menyentuh di bawah invalidation 1940
@@ -440,7 +440,7 @@ class TelegramTradingPlanTest extends TestCase
         MarketObservation::create([
             'ticker' => 'MEDC',
             'bar_date' => '2026-11-04',
-            'observation_time' => Carbon::parse('2026-11-04 15:50:00', 'Asia/Jakarta'),
+            'observation_time' => Carbon::parse('2026-11-04 15:50:00', 'Asia/Jakarta')->utc(),
             'open_price' => 1180,
             'high_price' => 1260, // >= 1200 dan >= 1250!
             'low_price' => 1175,
@@ -495,7 +495,7 @@ class TelegramTradingPlanTest extends TestCase
         MarketObservation::create([
             'ticker' => 'ICBP',
             'bar_date' => '2026-11-05',
-            'observation_time' => Carbon::parse('2026-11-05 09:05:00', 'Asia/Jakarta'),
+            'observation_time' => Carbon::parse('2026-11-05 09:05:00', 'Asia/Jakarta')->utc(),
             'open_price' => 11850, // Open di atas target 11800
             'high_price' => 11900,
             'low_price' => 11800,
@@ -513,6 +513,57 @@ class TelegramTradingPlanTest extends TestCase
         $sig->refresh();
         $this->assertEquals('TARGET_HIT', $sig->monitoring_status);
         $this->assertEquals('EVALUATED_CORRECT', $sig->evaluation_status);
+    }
+
+    public function test_strategy_expiry_and_rule_fallback_contracts(): void
+    {
+        $nowWib = Carbon::parse('2026-11-04 15:15:00', 'Asia/Jakarta');
+        $candidate = static function (string $ticker, string $type): array {
+            return [
+                'ticker' => $ticker,
+                'type' => $type,
+                'reason' => 'Regression contract',
+                'trigger_condition' => 'Test trigger',
+                'entry_zone' => 'Rp 5.000',
+                'metrics' => [
+                    'entry_price' => 5000.0,
+                    'target_price' => 5300.0,
+                    'cut_loss_price' => 4800.0,
+                ],
+                'horizon' => $type === 'SWING' ? 'Swing maksimal 5 hari bursa (T+5)' : 'Test horizon',
+                'valid_until' => 'Test',
+                'invalidation' => 'Test invalidation',
+                'risk_factors' => 'Test risk',
+                'source_observation_id' => 10,
+                'source_bar_date' => '2026-11-04',
+                'source_fetched_at' => '2026-11-04T08:00:00+00:00',
+                'source_available_at' => '2026-11-04T08:01:00+00:00',
+                'source_mode' => 'UNADJUSTED',
+                'source_board_scope' => 'RG',
+            ];
+        };
+
+        $signals = $this->service->recordTradingPlanSignals([
+            'as_of_session' => '2026-11-04',
+            'board_scope' => 'RG',
+            'candidates_scalping' => [$candidate('BBCA', 'SCALPING')],
+            'candidates_swing' => [$candidate('BBRI', 'SWING')],
+            'candidates_bsjp' => [$candidate('TLKM', 'BSJP')],
+        ], $nowWib, '15:15', false);
+
+        self::assertCount(3, $signals);
+        $byType = collect($signals)->keyBy(fn (PredictionSignal $signal): string => $signal->metadata['plan_type']);
+        self::assertSame('2026-11-04 16:00:00', $byType['SCALPING']->expires_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s'));
+        self::assertSame('2026-11-05 09:30:00', $byType['BSJP']->expires_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s'));
+        self::assertSame('2026-11-11 15:50:00', $byType['SWING']->expires_at->timezone('Asia/Jakarta')->format('Y-m-d H:i:s'));
+
+        foreach ($signals as $signal) {
+            self::assertNull($signal->probability_up);
+            self::assertNull($signal->probability_down);
+            self::assertNull($signal->confidence_score);
+            self::assertSame('PRE_DISPATCH_FROZEN_SNAPSHOT', $signal->metadata['contract_provenance']);
+            self::assertSame('RG', $signal->metadata['board_scope']);
+        }
     }
 
     public function test_same_day_mid_session_delivery_with_eod_bar_is_ambiguous(): void
@@ -558,7 +609,7 @@ class TelegramTradingPlanTest extends TestCase
         MarketObservation::create([
             'ticker' => 'ADRO',
             'bar_date' => '2026-11-04',
-            'observation_time' => Carbon::parse('2026-11-04 15:50:00', 'Asia/Jakarta'),
+            'observation_time' => Carbon::parse('2026-11-04 15:50:00', 'Asia/Jakarta')->utc(),
             'open_price' => 3780,
             'high_price' => 3850, // >= 3800 pemicu entry
             'low_price' => 3750,

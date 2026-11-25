@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Models\AnalysisRun;
 use App\Models\EvidenceSnapshot;
 use App\Models\MarketObservation;
 use App\Models\PredictionSignal;
 use App\Models\ResearchRequest;
 use App\Models\TelegramOutbox;
+use App\Services\AiMarketAnalysisService;
 use App\Services\BeiCalendarService;
 use App\Services\BeiUniverseRegistry;
 use App\Services\DataFreshnessPolicyService;
@@ -325,6 +327,55 @@ class OnDemandResearchAndDataFreshnessTest extends TestCase
         $this->assertEquals('QUERY_TICKER_STATUS', $reply['intent']);
         $this->assertStringContainsString('GOTO', $reply['reply_text']);
         $this->assertStringNotContainsString('*', $reply['reply_text']);
+    }
+
+    public function test_on_demand_fallback_is_structured_and_never_claims_gemini_success(): void
+    {
+        $observation = MarketObservation::create([
+            'ticker' => 'AALI',
+            'company_name' => 'PT Astra Agro Lestari Tbk',
+            'bar_date' => '2026-11-23',
+            'observation_time' => Carbon::parse('2026-11-23 16:00:00'),
+            'open_price' => 5000,
+            'high_price' => 5100,
+            'low_price' => 4950,
+            'close_price' => 5050,
+            'volume' => 1000,
+            'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
+            'is_eod_final' => true,
+            'validation_status' => 'VALID',
+        ]);
+        $request = ResearchRequest::create([
+            'request_id' => 'REQ_TEST_AALI_FALLBACK',
+            'ticker' => 'AALI',
+            'analysis_type' => 'current_condition',
+            'data_type_requested' => 'eod',
+            'as_of_time' => now('Asia/Jakarta'),
+            'status' => 'pending',
+        ]);
+
+        $run = AnalysisRun::create([
+            'run_id' => 'RUN_AALI_FALLBACK',
+            'trigger_type' => 'dashboard_on_demand',
+            'status' => 'completed',
+            'started_at' => now(),
+            'completed_at' => now(),
+        ]);
+        $analysis = app(AiMarketAnalysisService::class)->buildFallbackAnalysis(
+            $run,
+            'AALI snapshot',
+            null,
+            'TEST_INFERENCE_UNAVAILABLE'
+        );
+
+        $this->assertSame('STRUCTURED_FALLBACK', $analysis->model_name);
+        $this->assertSame('fallback', $analysis->validation_status);
+        $this->assertNull($analysis->structured_output['returned_model']);
+        $this->assertSame('TEST_INFERENCE_UNAVAILABLE', $analysis->structured_output['fallback_reason']);
     }
 
     public function test_zero_broker_calls_and_zero_synthetic_data(): void

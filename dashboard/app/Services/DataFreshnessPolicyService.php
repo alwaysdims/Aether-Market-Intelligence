@@ -74,22 +74,18 @@ class DataFreshnessPolicyService
             $expectedEodDate = $this->calendar->getCurrentTradingDay($now->copy()->subDay())->startOfDay();
         }
 
-        // 1. Check MarketObservation in DB. Preserve canonical conflicts for audit state.
-        $latestObs = app(CanonicalMarketReadService::class)->latest($ticker);
-        $conflictedObs = MarketObservation::query()
+        // 1. Read latest canonical-shaped record, including provisional/conflicted states.
+        // CanonicalMarketReadService intentionally exposes only VALID records.
+        $latestObs = MarketObservation::query()
             ->where('ticker', strtoupper(trim($ticker)))
             ->where('source', 'IDX Edge PRO')
             ->where('board_scope', 'RG')
             ->where('interval', '1d')
             ->where('data_classification', 'PUBLIC_MARKET_EOD')
             ->where('adjustment_mode', 'PROVIDER_BACK_ADJUSTED')
-            ->where('validation_status', 'CONFLICTED')
             ->orderByDesc('bar_date')
             ->orderByDesc('id')
             ->first();
-        if ($conflictedObs) {
-            $latestObs = $conflictedObs;
-        }
 
         // 2. Check News in DB
         $recentNewsCount = NewsItem::where(function ($q) use ($ticker) {

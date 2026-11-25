@@ -1,0 +1,112 @@
+{
+  "experiment_id": "IDX_EDGE_BBCA_PILOT_V1",
+  "status": "RESEARCH_ONLY",
+  "ticker": "BBCA",
+  "calendar_version": "BEI_OFFICIAL_HOLIDAY_2024_2026_V1",
+  "archive_dates": 506,
+  "paired_db_dates": 501,
+  "training_rows": 275,
+  "validation_rows": 112,
+  "test_rows": 93,
+  "split": {
+    "train_end": "2025-12-31",
+    "validation": "2026-01-01..2026-06-30",
+    "test": "2026-07-01..2026-11-10"
+  },
+  "purge_horizon_sessions": 5,
+  "features": [
+    "ret_1",
+    "ret_3",
+    "ret_5",
+    "ema9_ratio",
+    "ema20_ratio",
+    "ema_spread",
+    "rsi14",
+    "atr14_ratio",
+    "rvol20",
+    "dist_support20",
+    "dist_resistance20",
+    "volatility20"
+  ],
+  "preprocessing": "median and StandardScaler fit train-only",
+  "threshold_policy": "validation precision with minimum 10% validation coverage",
+  "models": [
+    "logistic_regression",
+    "hist_gradient_boosting"
+  ],
+  "targets": {
+    "tp_6": {
+      "logistic_regression": {
+        "threshold_validation": 0.9299999999999999,
+        "numerator_wins": 9,
+        "denominator_selected": 16,
+        "precision_pct": 56.25,
+        "coverage_pct": 17.2043,
+        "wilson_95": [
+          0.331786,
+          0.769013
+        ],
+        "net_return_pct_trade_series": 44.6624,
+        "max_drawdown_pct_trade_series": 13.3521,
+        "insufficient_data": 0,
+        "artifact_sha256": "17c9b9a048b6a9727e4ceb1b4c5f9c3cfd35224f2d585c556ee573c14aa783e8"
+      },
+      "hist_gradient_boosting": {
+        "threshold_validation": 0.8799999999999999,
+        "numerator_wins": 3,
+        "denominator_selected": 4,
+        "precision_pct": 75.0,
+        "coverage_pct": 4.3011,
+        "wilson_95": [
+          0.300642,
+          0.954413
+        ],
+        "net_return_pct_trade_series": 21.6088,
+        "max_drawdown_pct_trade_series": 0.0,
+        "insufficient_data": 0,
+        "artifact_sha256": "a965b475b6e67036865914274231ab02806600110394137c3d670f0ffba45843"
+      }
+    },
+    "tp_15": {
+      "logistic_regression": {
+        "threshold_validation": 0.95,
+        "numerator_wins": 0,
+        "denominator_selected": 14,
+        "precision_pct": 0.0,
+        "coverage_pct": 15.0538,
+        "wilson_95": [
+          0.0,
+          0.215311
+        ],
+        "net_return_pct_trade_series": 11.8861,
+        "max_drawdown_pct_trade_series": 20.5508,
+        "insufficient_data": 0,
+        "artifact_sha256": "410e2fed6e24a9acf85c860bed5e311b7adecaf0f0a1ef61eb04d550ec18dd0c"
+      },
+      "hist_gradient_boosting": {
+        "threshold_validation": 0.08,
+        "numerator_wins": 0,
+        "denominator_selected": 1,
+        "precision_pct": 0.0,
+        "coverage_pct": 1.0753,
+        "wilson_95": [
+          0,
+          0.793451
+        ],
+        "net_return_pct_trade_series": 1.4536,
+        "max_drawdown_pct_trade_series": 0.0,
+        "insufficient_data": 0,
+        "artifact_sha256": "95378de32d4b9978e60235eb151f28ddcab1b3c7e88036a4b93dd7927621a433"
+      }
+    },
+    "tp_35": {
+      "status": "DATA_INSUFFICIENT_TRAIN_CLASS",
+      "train_class_counts": {
+        "0": 275
+      },
+      "models": {}
+    }
+  },
+  "dataset_hash": "dae027c975cd1e87728cb141344c0ab907a5dcf71d755b428f3b2460380c7d8b",
+  "manifest_sha256": "cadc4ed4a2fe30d666354b5184dc2a37f32cb1861e28fdafd15f3e27f353a9ce"
+}

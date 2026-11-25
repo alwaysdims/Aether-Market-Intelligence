@@ -142,7 +142,7 @@ class MarketMonitoringService
                     ])]);
 
                     // Jika High/Low menyentuh level pemicu pada bar yang sama dengan delivery di tengah sesi, tandai AMBIGUOUS
-                    if ($h >= $ref || $l <= $inv) {
+                    if ($signal->monitoring_status !== 'ACTIVE' && ($h >= $ref || $l <= $inv)) {
                         DB::transaction(function () use ($signal, $latestObs, $now, &$report, $deliveredTime) {
                             $signal->update(['monitoring_status' => 'AMBIGUOUS']);
                             MonitoringEvent::create([
@@ -417,6 +417,7 @@ class MarketMonitoringService
                 ->where('source', 'IDX Edge PRO')
                 ->where(fn ($q) => $q->where('adjustment_mode', 'PROVIDER_BACK_ADJUSTED')->orWhereNull('adjustment_mode'))
                 ->where('validation_status', 'VALID')
+                ->where('is_eod_final', true)
                 ->first();
 
             // Fallback: If no exact adjustment tagged, accept validated observation but reject quarantined intraday
@@ -426,6 +427,7 @@ class MarketMonitoringService
                     ->whereDate('bar_date', $dueDateStr)
                     ->where('source', 'IDX Edge PRO')
                     ->where('validation_status', 'VALID')
+                    ->where('is_eod_final', true)
                     ->first();
             }
 
@@ -456,7 +458,9 @@ class MarketMonitoringService
                         'evaluation_status' => $evalStatus,
                         'metadata' => array_merge($dueSig->metadata ?? [], [
                             'actual_evaluation_price' => $actualClose,
+                            'actual_close_5d' => $actualClose,
                             'evaluation_return_pct' => $returnPct,
+                            'return_5d_pct' => round($returnPct, 2),
                             'evaluated_at' => $now->toISOString(),
                             'is_provisional' => $isProvisional,
                         ]),
@@ -486,6 +490,10 @@ class MarketMonitoringService
         // 3. Process Expirations for remaining active/conditional signals whose horizon has expired
         $expiredSignals = PredictionSignal::monitoringEligible()->whereIn('monitoring_status', ['ACTIVE', 'WAITING_FOR_TRIGGER', 'TRIGGER_OBSERVED'])
             ->where('expires_at', '<=', $now)
+            ->where(function ($q) {
+                $q->whereNull('metadata->monitoring_cohort')
+                    ->orWhere('metadata->monitoring_cohort', '!=', 'SHADOW_TEST');
+            })
             ->get();
 
         foreach ($expiredSignals as $sig) {
@@ -495,10 +503,16 @@ class MarketMonitoringService
 
             $observedSessions = MarketObservation::where('ticker', $sig->ticker)
                 ->whereIn('board_scope', ['RG', 'INDEX'])
-                ->where('observation_time', '>=', $sig->published_at)
-                ->where('observation_time', '<=', $sig->expires_at)
+                ->where(function ($q) use ($sig) {
+                    $q->whereBetween('bar_date', [
+                        $sig->published_at->toDateString(),
+                        $sig->expires_at->toDateString(),
+                    ])->orWhereBetween('observation_time', [
+                        $sig->published_at->copy()->startOfDay(),
+                        $sig->expires_at->copy()->endOfDay(),
+                    ]);
+                })
                 ->where('source', 'IDX Edge PRO')
-                ->where(fn ($q) => $q->where('adjustment_mode', 'PROVIDER_BACK_ADJUSTED')->orWhereNull('adjustment_mode'))
                 ->where('validation_status', 'VALID')
                 ->where('is_eod_final', true)
                 ->distinct()

@@ -1,0 +1,897 @@
+{
+  "status": "RESEARCH_ONLY_EXPOSED_TEST_EVALUATION",
+  "model": "tp_6_logistic_regression",
+  "signals": [
+    {
+      "decision_id": "BBCA_V2_TP6_20260701",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-01",
+      "probability": 0.23691611679139946,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260702",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-02",
+      "probability": 0.23369388627420426,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260703",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-03",
+      "probability": 0.3593547601613446,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260706",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-06",
+      "probability": 0.3849231689785163,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260707",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-07",
+      "probability": 0.2328643057234233,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260708",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-08",
+      "probability": 0.2150552831496587,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260709",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-09",
+      "probability": 0.10404242978756993,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260710",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-10",
+      "probability": 0.056040280400007976,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260713",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-13",
+      "probability": 0.06286795804133177,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260714",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-14",
+      "probability": 0.074973759600593,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260715",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-15",
+      "probability": 0.06756777936777884,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260716",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-16",
+      "probability": 0.03815988443547078,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260717",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-17",
+      "probability": 0.04875474624759554,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "SL_GAP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260720",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-20",
+      "probability": 0.07123971515912346,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "SL_GAP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260721",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-21",
+      "probability": 0.03539182396934831,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "SL_GAP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260722",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-22",
+      "probability": 0.01989265205471402,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "SL"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260723",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-23",
+      "probability": 0.058924894275412136,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260724",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-24",
+      "probability": 0.030662208443949162,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260727",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-27",
+      "probability": 0.027853455934297035,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260728",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-28",
+      "probability": 0.0665722687562093,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260729",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-29",
+      "probability": 0.05445030703778261,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260730",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-30",
+      "probability": 0.04147973990291435,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260731",
+      "ticker": "BBCA",
+      "bar_date": "2026-07-31",
+      "probability": 0.11441679058139757,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260803",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-03",
+      "probability": 0.07796088422573026,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260804",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-04",
+      "probability": 0.030173919757921247,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260805",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-05",
+      "probability": 0.06286339296016738,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260806",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-06",
+      "probability": 0.07929476467816636,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260807",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-07",
+      "probability": 0.04757009389490064,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260810",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-10",
+      "probability": 0.05710464371368455,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260811",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-11",
+      "probability": 0.09640462722535681,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260812",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-12",
+      "probability": 0.06712499178411174,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260813",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-13",
+      "probability": 0.07346644413571694,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260814",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-14",
+      "probability": 0.092065700888875,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260818",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-18",
+      "probability": 0.11746800411120091,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260819",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-19",
+      "probability": 0.09807718396963863,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260820",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-20",
+      "probability": 0.061278011980763866,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260821",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-21",
+      "probability": 0.06860645666350756,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260824",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-24",
+      "probability": 0.0927550944130313,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260826",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-26",
+      "probability": 0.09503542969805712,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260827",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-27",
+      "probability": 0.05585985149317764,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260828",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-28",
+      "probability": 0.06617806133356144,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260831",
+      "ticker": "BBCA",
+      "bar_date": "2026-08-31",
+      "probability": 0.0995655039418779,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260901",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-01",
+      "probability": 0.035565420871620027,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260902",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-02",
+      "probability": 0.028539483138687316,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260903",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-03",
+      "probability": 0.020703108155205072,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "SL"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260904",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-04",
+      "probability": 0.02477414883603458,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "SL"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260907",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-07",
+      "probability": 0.025357285496816095,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "SL"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260908",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-08",
+      "probability": 0.015709740053945043,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "SL"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260909",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-09",
+      "probability": 0.06692844649530698,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "SL"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260910",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-10",
+      "probability": 0.10330079941817684,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260911",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-11",
+      "probability": 0.1426920381099222,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260914",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-14",
+      "probability": 0.09667712088922041,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260915",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-15",
+      "probability": 0.17338373765402906,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260916",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-16",
+      "probability": 0.2671223548944252,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260917",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-17",
+      "probability": 0.1666942054140266,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260918",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-18",
+      "probability": 0.3616046947335136,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260921",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-21",
+      "probability": 0.3605272935014567,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260922",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-22",
+      "probability": 0.3874278195771402,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260923",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-23",
+      "probability": 0.2989583122760877,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260924",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-24",
+      "probability": 0.4495288687453235,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260925",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-25",
+      "probability": 0.41352779634452186,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260928",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-28",
+      "probability": 0.42624906420429526,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260929",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-29",
+      "probability": 0.5823120372484212,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20260930",
+      "ticker": "BBCA",
+      "bar_date": "2026-09-30",
+      "probability": 0.6438735254555763,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261001",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-01",
+      "probability": 0.6422498340673002,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261002",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-02",
+      "probability": 0.4854034588409642,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261005",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-05",
+      "probability": 0.4335917797577039,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261006",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-06",
+      "probability": 0.6401604136921678,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261007",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-07",
+      "probability": 0.5858244081540438,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261008",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-08",
+      "probability": 0.5407915351666562,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261009",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-09",
+      "probability": 0.4325715553634315,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "SL_GAP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261012",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-12",
+      "probability": 0.5692087261446741,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "SL_GAP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261013",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-13",
+      "probability": 0.5599521723232238,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "SL_GAP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261014",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-14",
+      "probability": 0.2829894963508183,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "SL_GAP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261015",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-15",
+      "probability": 0.4592747621290529,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261016",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-16",
+      "probability": 0.9983684977346753,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261019",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-19",
+      "probability": 0.9839242621303071,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261020",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-20",
+      "probability": 0.9281844925645474,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "SL"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261021",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-21",
+      "probability": 0.9858081867399324,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "SL"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261022",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-22",
+      "probability": 0.9968253399665642,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "SL"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261023",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-23",
+      "probability": 0.997197236237129,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261026",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-26",
+      "probability": 0.9968775860183933,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261027",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-27",
+      "probability": 0.9959017020768772,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261028",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-28",
+      "probability": 0.9833796489816167,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "SL"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261029",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-29",
+      "probability": 0.9978348264838537,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261030",
+      "ticker": "BBCA",
+      "bar_date": "2026-10-30",
+      "probability": 0.9947475872852913,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261102",
+      "ticker": "BBCA",
+      "bar_date": "2026-11-02",
+      "probability": 0.9808080248333211,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "EXPIRED"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261103",
+      "ticker": "BBCA",
+      "bar_date": "2026-11-03",
+      "probability": 0.995816207378377,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261104",
+      "ticker": "BBCA",
+      "bar_date": "2026-11-04",
+      "probability": 0.9809555081645049,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261105",
+      "ticker": "BBCA",
+      "bar_date": "2026-11-05",
+      "probability": 0.9623329025381453,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261106",
+      "ticker": "BBCA",
+      "bar_date": "2026-11-06",
+      "probability": 0.9709458767122905,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261109",
+      "ticker": "BBCA",
+      "bar_date": "2026-11-09",
+      "probability": 0.932720242806062,
+      "threshold": 0.9299999999999999,
+      "selected": true,
+      "contract_status": "TP"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261110",
+      "ticker": "BBCA",
+      "bar_date": "2026-11-10",
+      "probability": 0.880855112468974,
+      "threshold": 0.9299999999999999,
+      "selected": false,
+      "contract_status": "EXPIRED"
+    }
+  ],
+  "target_hit_precision": {
+    "numerator": 9,
+    "denominator": 16,
+    "percent": 56.25
+  },
+  "submitted_entries": 16,
+  "rejected_trades": 10,
+  "rejection_reasons": [
+    {
+      "decision_id": "BBCA_V2_TP6_20261019",
+      "reason": "ALREADY_OPEN"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261022",
+      "reason": "ALREADY_OPEN"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261023",
+      "reason": "ALREADY_OPEN"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261026",
+      "reason": "ALREADY_OPEN"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261028",
+      "reason": "INSUFFICIENT_FUNDS"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261030",
+      "reason": "ALREADY_OPEN"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261102",
+      "reason": "ALREADY_OPEN"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261103",
+      "reason": "ALREADY_OPEN"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261104",
+      "reason": "ALREADY_OPEN"
+    },
+    {
+      "decision_id": "BBCA_V2_TP6_20261106",
+      "reason": "ALREADY_OPEN"
+    }
+  ],
+  "portfolio_return_pct": 19.33,
+  "mtm_drawdown_pct": 5.87,
+  "trade_series_net_return_not_portfolio": 44.6624,
+  "tp35": "DATA_INSUFFICIENT_TRAIN_CLASS",
+  "uncertainty": "Overlapping dates and one ticker violate independence; Wilson interval is descriptive, not strong performance evidence."
+}

@@ -67,6 +67,8 @@ class AiConclusionPresenter
             'can_request_research' => $isValidIssuer,
             'analysis_date' => $analysisDate,
             'bar_date' => $barDate,
+            'latest_observation_date' => $latestObs?->bar_date?->format('Y-m-d'),
+            'is_analysis_stale_for_latest_bar' => $barDate !== null && $latestObs?->bar_date !== null && $barDate !== $latestObs->bar_date->format('Y-m-d'),
             'horizon' => $struct['impact_horizon'] ?? 'Multi_day (+5D)',
             'mode_label' => $modeLabel,
             'model_name' => $latestAnalysis?->model_name ?? config('services.consultation_ai.model_id', 'gemini-3.6-flash'),
@@ -409,9 +411,10 @@ class AiConclusionPresenter
         });
 
         // 1. Universe status
+        $hasResearchPilot = $ticker === 'BBCA';
         $badge = $isConstituent
             ? 'WALK_FORWARD_VALIDATED_CONSTITUENT'
-            : 'NON_UNIVERSE_INSTRUMENT';
+            : ($hasResearchPilot ? 'RESEARCH_PILOT_ONLY' : 'NON_UNIVERSE_INSTRUMENT');
 
         // 2. Inference status for this specific bar
         $hasActiveInferenceForBar = $isConstituent && ($barSignal !== null);

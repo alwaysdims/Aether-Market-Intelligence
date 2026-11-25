@@ -124,6 +124,7 @@ class TelegramTradingPlanService
         $swingPool = [];
         $inspectedCount = 0;
         $freshObservedCount = 0;
+        $staleObservedCount = 0;
 
         foreach ($allLatest as $ticker => $obs) {
             $inspectedCount++;
@@ -134,9 +135,10 @@ class TelegramTradingPlanService
             // Penegakan Freshness Ketat: Hanya evaluasi emiten dengan bar EOD H-1 definitif
             $obsDate = $obs->bar_date ? $obs->bar_date->toDateString() : null;
             if ($obsDate !== $prevDateStr) {
-                continue; // Tolak emiten berdata H-2 atau lebih usang
+                $staleObservedCount++;
+            } else {
+                $freshObservedCount++;
             }
-            $freshObservedCount++;
 
             $close = (float) $obs->close_price;
             $open = (float) $obs->open_price;
@@ -169,6 +171,13 @@ class TelegramTradingPlanService
                         'metrics' => $metrics,
                         'support' => $low,
                         'resistance' => $high,
+                        'source_observation_id' => $obs->id,
+                        'source_bar_date' => $obs->bar_date?->toDateString(),
+                        'source_fetched_at' => $obs->fetched_at?->toIso8601String(),
+                        'source_available_at' => $obs->available_at?->toIso8601String(),
+                        'source_mode' => $obs->adjustment_mode,
+                        'source_board_scope' => $obs->board_scope,
+                        'source' => $obs->source,
                         'horizon' => '1 hari bursa (Sesi 1 - 2)',
                         'valid_until' => "{$nowWib->format('Y-m-d')} 16:00 WIB",
                         'invalidation' => sprintf('Harga turun di bawah CL Rp %s atau breakdown level support H-1', number_format($metrics['cut_loss_price'], 0, ',', '.')),
@@ -211,7 +220,7 @@ class TelegramTradingPlanService
         return [
             'plan_title' => 'TRADING PLAN — PRA-PASAR (08:30 WIB)',
             'as_of_session' => $prevDateStr,
-            'coverage_desc' => "Universe Diperiksa: {$inspectedCount} emiten | Data EOD Fresh H-1: {$freshObservedCount} emiten",
+            'coverage_desc' => "Universe Diperiksa: {$inspectedCount} emiten | EOD H-1: {$freshObservedCount} | EOD lebih lama: {$staleObservedCount} | Kandidat riset: ".(count($scalpingCandidates) + count($swingCandidates)),
             'board_scope' => 'RG (Pasar Reguler Baseline EOD)',
             'status_code' => $statusCode,
             'candidates_scalping' => $scalpingCandidates,
@@ -240,18 +249,20 @@ class TelegramTradingPlanService
         $intradayFeedReady = ($tradesCount > 50 && $boardRgGuaranteed && $boardStatus === 'RG');
 
         if (! $intradayFeedReady) {
-            // Guard Integritas: Feed live running trade belum memenuhi kontrak kepastian RG
+            // Feed live tetap dikarantina. Kirim kandidat EOD sebagai watchlist riset, bukan sinyal intraday.
+            $preMarket = $this->generatePreMarketPlan($nowWib);
+
             return [
-                'plan_title' => 'TRADING PLAN — SCREENING INTRADAY PEMBUKAAN (09:15 WIB)',
-                'as_of_session' => $nowWib->format('Y-m-d'),
-                'coverage_desc' => "Observasi Pembukaan Sesi 1: 09:00 - {$nowWib->format('H:i')} WIB ({$covStatus})",
-                'board_scope' => $boardStatus,
-                'status_code' => 'DATA_CAPABILITY_BLOCKED',
-                'candidates_scalping' => [],
-                'candidates_swing' => [],
-                'has_candidates' => false,
-                'data_notes' => 'Feed transaksi live running trade berstatus BOARD_SCOPE_UNVERIFIED (ketiadaan pemisah papan RG/NG dan event timestamp bursa). Sistem secara ketat menolak publikasi sinyal intraday spekulatif.',
-                'watchlist_reference_eod' => 'Watchlist pra-pasar 08:30 WIB tetap berstatus rencana bersyarat berbasis EOD dan belum terkonfirmasi oleh observasi mikro intraday terverifikasi.',
+                'plan_title' => 'TRADING PLAN — WATCHLIST RISET EOD (09:15 WIB)',
+                'as_of_session' => $preMarket['as_of_session'],
+                'coverage_desc' => $preMarket['coverage_desc'],
+                'board_scope' => 'EOD_BASELINE_ONLY',
+                'status_code' => ! empty($preMarket['has_candidates']) ? 'SETUP_FOUND_RESEARCH_ONLY' : 'NO_SETUP_FOUND',
+                'candidates_scalping' => $preMarket['candidates_scalping'],
+                'candidates_swing' => $preMarket['candidates_swing'],
+                'has_candidates' => $preMarket['has_candidates'],
+                'data_notes' => 'Feed intraday BOARD_SCOPE_UNVERIFIED. Kandidat dikirim sebagai watchlist riset EOD, bukan sinyal live, bukan order, dan bukan bukti akurasi 70%.',
+                'watchlist_reference_eod' => 'Kandidat 08:30 dipertahankan sebagai watchlist EOD karena feed intraday belum terverifikasi.',
             ];
         }
 
@@ -389,8 +400,9 @@ class TelegramTradingPlanService
         $preMarket = $this->generatePreMarketPlan($nowWib);
         $sesi2Candidates = [];
 
-        // Evaluasi kandidat pagi untuk Sesi 2, maksimum lima kandidat day trade.
-        foreach (array_slice($preMarket['candidates_scalping'], 0, 5) as $cand) {
+        // Evaluasi kandidat pagi untuk Sesi 2, maksimum lima kandidat riset.
+        $middayCandidates = array_merge($preMarket['candidates_scalping'], $preMarket['candidates_swing']);
+        foreach (array_slice($middayCandidates, 0, 5) as $cand) {
             $cand['status_sesi1'] = 'MENUNGGU_KONFIRMASI_SESI_2';
             $cand['evaluasi_aturan'] = 'Setup tetap berlaku bersyarat selama harga tidak breakdown batas CL.';
             $sesi2Candidates[] = $cand;
@@ -443,32 +455,19 @@ class TelegramTradingPlanService
             && $evidenceAvailableAt !== null;
 
         if ($liveState['status'] !== 'CONNECTED' || ! $liveSessionCurrent || ! $evidenceValid || ! $lineageComplete || ! $boardRgGuaranteed || ! $freshObservation) {
+            $preMarket = $this->generatePreMarketPlan($nowWib);
+
             return [
-                'plan_title' => 'STATUS CAPABILITY BSJP (15:15 WIB)',
-                'status_code' => 'DATA_CAPABILITY_BLOCKED',
-                'as_of_session' => $evidenceSessionDate,
-                'source_session' => $evidenceSessionDate,
-                'coverage_desc' => "Sesi berjalan ({$covStatus})",
-                'board_scope' => $boardStatus,
+                'plan_title' => 'TRADING PLAN — WATCHLIST RISET EOD (15:15 WIB)',
+                'status_code' => ! empty($preMarket['has_candidates']) ? 'SETUP_FOUND_RESEARCH_ONLY' : 'NO_SETUP_FOUND',
+                'as_of_session' => $preMarket['as_of_session'],
+                'source_session' => $preMarket['as_of_session'],
+                'coverage_desc' => $preMarket['coverage_desc'],
+                'board_scope' => 'EOD_BASELINE_ONLY',
+                'candidates_swing' => array_slice($preMarket['candidates_swing'], 0, 5),
                 'candidates_bsjp' => [],
-                'has_candidates' => false,
-                'data_notes' => 'BSJP ditahan: observasi intraday RG tervalidasi dan fresh belum tersedia. EOD sesi sebelumnya hanya baseline, bukan bukti kondisi sesi berjalan.',
-                'capability_gate' => [
-                    'required' => ['session_date_current', 'board_scope_rg', 'board_rg_guaranteed', 'fresh_observation_within_15m'],
-                    'observed' => [
-                        'session_date' => $evidenceSessionDate,
-                        'board_scope' => $evidenceObservation?->board_scope ?? $boardStatus,
-                        'observation_id' => $evidenceObservation?->id,
-                        'fetched_at' => $evidenceFetchedAt?->toIso8601String(),
-                        'available_at' => $evidenceAvailableAt?->toIso8601String(),
-                        'freshness_basis' => $evidenceFreshAt?->toIso8601String(),
-                        'validation_status' => $evidenceObservation?->validation_status,
-                        'adjustment_mode' => $evidenceObservation?->adjustment_mode,
-                        'data_classification' => $evidenceObservation?->data_classification,
-                        'board_rg_guaranteed' => $boardRgGuaranteed,
-                        'observation_end_at' => $observationEndAt,
-                    ],
-                ],
+                'has_candidates' => $preMarket['has_candidates'],
+                'data_notes' => 'BSJP live intraday tidak terbit karena board RG belum terverifikasi. Kandidat dikirim sebagai watchlist riset EOD, bukan sinyal overnight live, bukan order, dan bukan bukti akurasi 70%.',
             ];
         }
 
@@ -580,12 +579,10 @@ class TelegramTradingPlanService
             "• Cakupan Pantau  : {$planData['coverage_desc']}",
             "• Status Papan RG : {$planData['board_scope']}",
             "• Status Sinyal   : {$statusLabel}",
-            '• Acuan EOD       : 13 Nov 2026 (sesi perdagangan terakhir yang tersedia)',
-            '• Coverage EOD    : 496/499 emiten; gap bar sesi: SRIL, SUGI, TDPM',
-            '• Finality         : PROVISIONAL',
-            '• ML produksi      : TIDAK AKTIF; artefak produksi belum tersedia',
-            '• Berita           : UNVERIFIED; hanya berita dalam snapshot tersimpan',
-            '• Harga live       : TIDAK TERSEDIA; tanpa klaim scalping atau sinyal intraday RG',
+            '• Finality         : '.($planData['finality'] ?? 'PROVISIONAL'),
+            '• Status model     : '.$this->formatScheduledModelStatus($planData),
+            '• Berita           : '.($planData['news_status'] ?? 'NOT_VERIFIED'),
+            '• Harga live       : '.($planData['live_price_status'] ?? 'NOT_VERIFIED'),
             '──────────────────────────────────────────',
         ];
 
@@ -699,6 +696,8 @@ class TelegramTradingPlanService
                 default => $nowWib->copy()->addDays(7),
             };
 
+            $decisionAtStorage = $nowWib->copy()->setTimezone('UTC');
+            $expiresAtStorage = $expiresAt->copy()->setTimezone('UTC');
             $metrics = $cand['metrics'] ?? [];
             $entryPrice = (float) ($metrics['entry_price'] ?? 0);
             $targetPrice = (float) ($metrics['target_price'] ?? 0);
@@ -736,14 +735,14 @@ class TelegramTradingPlanService
                 'plan_id' => $planId,
                 'ticker' => $ticker,
                 'strategy' => $type,
-                'decision_time' => $nowWib->toIso8601String(),
+                'decision_time' => $decisionAtStorage->toIso8601String(),
                 'source' => 'IDX Edge PRO',
                 'source_session' => $planData['as_of_session'] ?? null,
                 'entry' => $entryPrice,
                 'target' => $targetPrice,
                 'cut_loss' => $cutLossPrice,
                 'horizon' => $horizonType,
-                'expiry' => $expiresAt->toIso8601String(),
+                'expiry' => $expiresAtStorage->toIso8601String(),
                 'fee_rate_assumed' => 0.0040,
                 'strategy_version' => self::STRATEGY_VERSION,
                 'evidence_snapshot_id' => $evidence->id,
@@ -772,24 +771,24 @@ class TelegramTradingPlanService
                     'ticker' => $ticker,
                     'signal_status' => 'PUBLISHED_CONDITIONAL',
                     'direction' => 'UP',
-                    'probability_up' => 1.0,
-                    'probability_down' => 0.0,
-                    'max_probability' => 1.0,
-                    'confidence_score' => 1.0,
-                    'threshold_applied' => 0.0,
+                    'probability_up' => null,
+                    'probability_down' => null,
+                    'max_probability' => null,
+                    'confidence_score' => null,
+                    'threshold_applied' => null,
                     'model_name' => $strategyName,
                     'model_version' => self::STRATEGY_VERSION,
                     'feature_schema_hash' => self::CONFIG_HASH,
                     'decision_date' => $nowWib->toDateString(),
-                    'decision_timestamp' => $nowWib,
+                    'decision_timestamp' => $decisionAtStorage,
                     'reference_price' => $entryPrice,
                     'reference_price_date' => $planData['as_of_session'] ?? $nowWib->toDateString(),
                     'target_price' => $targetPrice,
                     'invalidation_price' => $cutLossPrice,
                     'predicted_horizon_days' => $horizonDays,
                     'evaluation_due_date' => $evalDueDate,
-                    'published_at' => $nowWib,
-                    'expires_at' => $expiresAt,
+                    'published_at' => $decisionAtStorage,
+                    'expires_at' => $expiresAtStorage,
                     'monitoring_status' => 'WAITING_FOR_TRIGGER',
                     'evaluation_status' => 'PENDING',
                     'evidence_snapshot_id' => $evidence->id,
@@ -1148,6 +1147,28 @@ class TelegramTradingPlanService
             'reconciled_signals' => $reconciled,
             'legacy_incomplete_contracts' => $legacyCount,
         ];
+    }
+
+    protected function formatScheduledModelStatus(array $planData): string
+    {
+        $title = (string) ($planData['plan_title'] ?? '');
+        $status = (string) ($planData['status_code'] ?? 'NO_SETUP_FOUND');
+
+        if (str_contains($title, '09:15')) {
+            return $status === 'DATA_CAPABILITY_BLOCKED'
+                ? 'INTRADAY ML: TIDAK DIJALANKAN; feed RG intraday belum terverifikasi'
+                : 'INTRADAY ML: TIDAK DIJALANKAN; inference receipt belum tersedia';
+        }
+
+        if (str_contains($title, '08:30')) {
+            return 'PRA-PASAR: STRATEGI EOD RULE-BASED; ML DAILY SWING BBCA TERPISAH DI SLOT 16:15';
+        }
+
+        if (str_contains($title, '15:15')) {
+            return 'BSJP: RULE-BASED; INTRADAY RG BELUM TERBUKTI';
+        }
+
+        return 'RULE-BASED / MODEL-SCOPE TERPISAH';
     }
 
     protected function loadLiveSupervisorState(): array

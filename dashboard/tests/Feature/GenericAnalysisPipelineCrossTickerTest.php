@@ -36,7 +36,7 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
     {
         IdxCompanyRegistry::create([
             'ticker' => 'BBCA',
-            'company_name' => 'Bank Central Asia Tbk.',
+            'company_name' => 'PT Bank Central Asia Tbk',
             'listing_board' => 'Utama',
             'sector' => 'Financials',
             'instrument_type' => 'EQUITY',
@@ -53,6 +53,10 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
             'close_price' => 4980.0,
             'volume' => 50000000,
             'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'validation_status' => 'VALID',
             'is_eod_final' => true,
         ]);
@@ -82,7 +86,7 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
 
         $report = app(CompanyFundamentalService::class)->formatFundamentalReport('BBCA');
 
-        $this->assertStringContainsString('Bank Central Asia Tbk.', $report);
+        $this->assertStringContainsString('PT Bank Central Asia Tbk', $report);
         $this->assertStringContainsString('Status Papan: Papan Utama', $report);
         $this->assertStringContainsString('Fraksi Tick: Rp 10', $report);
         $this->assertStringContainsString('Metrik Perbankan Dikecualikan', $report);
@@ -113,6 +117,10 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
             'close_price' => 4800.0,
             'volume' => 30000000,
             'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'validation_status' => 'VALID',
             'is_eod_final' => true,
         ]);
@@ -165,6 +173,10 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
             'close_price' => 1210.0,
             'volume' => 15000000,
             'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'validation_status' => 'VALID',
             'is_eod_final' => true,
         ]);
@@ -219,6 +231,10 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
                 'close_price' => 71.0 + $i,
                 'volume' => 1000000,
                 'source' => 'IDX Edge PRO',
+                'board_scope' => 'RG',
+                'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+                'interval' => '1d',
+                'data_classification' => 'PUBLIC_MARKET_EOD',
                 'validation_status' => 'VALID',
                 'is_eod_final' => true,
             ]);
@@ -262,6 +278,10 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
             'close_price' => 2200.0,
             'volume' => 12000000,
             'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'validation_status' => 'VALID',
             'is_eod_final' => true,
         ]);
@@ -309,6 +329,10 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
             'close_price' => 100.0,
             'volume' => 1000000,
             'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'validation_status' => 'VALID',
             'is_eod_final' => true,
         ]);
@@ -357,6 +381,10 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
             'close_price' => 500.0,
             'volume' => 1000000,
             'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'validation_status' => 'VALID',
             'is_eod_final' => true,
         ]);
@@ -396,7 +424,7 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
 
         IdxCompanyRegistry::create([
             'ticker' => 'BBCA',
-            'company_name' => 'Bank Central Asia Tbk.',
+            'company_name' => 'PT Bank Central Asia Tbk',
             'listing_board' => 'Utama',
             'sector' => 'Financials',
             'instrument_type' => 'EQUITY',
@@ -422,6 +450,10 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
             'close_price' => 4980.0,
             'volume' => 50000000,
             'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'validation_status' => 'VALID',
             'is_eod_final' => true,
         ]);
@@ -436,6 +468,10 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
             'close_price' => 4800.0,
             'volume' => 30000000,
             'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'validation_status' => 'VALID',
             'is_eod_final' => true,
         ]);
@@ -454,7 +490,7 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
             '_sync' => true,
         ]);
 
-        $this->assertStringContainsString('Bank Central Asia Tbk.', $res1['reply_text']);
+        $this->assertStringContainsString('PT Bank Central Asia Tbk', $res1['reply_text']);
         $this->assertStringNotContainsString('Astra International', $res1['reply_text']);
 
         // Turn 2: Switch ticker to ASII
@@ -472,7 +508,7 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
         ]);
 
         $this->assertStringContainsString('Astra International Tbk.', $res2['reply_text']);
-        $this->assertStringNotContainsString('Bank Central Asia Tbk.', $res2['reply_text']);
+        $this->assertStringNotContainsString('PT Bank Central Asia Tbk', $res2['reply_text']);
         $this->assertStringNotContainsString('4.980', $res2['reply_text']);
     }
 
@@ -500,6 +536,10 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
             'close_price' => 105.0,
             'volume' => 500000,
             'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'validation_status' => 'VALID',
             'is_eod_final' => true,
         ]);
@@ -641,6 +681,10 @@ class GenericAnalysisPipelineCrossTickerTest extends TestCase
             'close_price' => 595.0,
             'volume' => 12000000,
             'source' => 'IDX Edge PRO',
+            'board_scope' => 'RG',
+            'adjustment_mode' => 'PROVIDER_BACK_ADJUSTED',
+            'interval' => '1d',
+            'data_classification' => 'PUBLIC_MARKET_EOD',
             'validation_status' => 'VALID',
             'is_eod_final' => true,
         ]);

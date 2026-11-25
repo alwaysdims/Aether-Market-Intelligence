@@ -564,6 +564,16 @@ class DataSourceRegistryService
         ];
     }
 
+    /** @param array<string, mixed> $attributes */
+    protected function safeSourceUpdate(DataSource $source, array $attributes): void
+    {
+        try {
+            $source->update($attributes);
+        } catch (\Throwable $error) {
+            logger()->warning('[DataSourceRegistry] metadata update skipped: '.$error::class);
+        }
+    }
+
     /**
      * Execute controlled automated EOD history synchronization for 1 ticker.
      *
@@ -574,13 +584,13 @@ class DataSourceRegistryService
         $ticker = strtoupper(trim($ticker));
         $source = DataSource::where('name', 'IDX Edge Histori EOD Reguler')->first();
         if ($source) {
-            $source->update(['last_attempt_at' => now('UTC')]);
+            $this->safeSourceUpdate($source, ['last_attempt_at' => now('UTC')]);
         }
 
         $effective = $source ? $this->getEffectiveStatus($source) : ['effective_enabled' => false, 'reason' => 'Source not registered'];
         if (! $effective['effective_enabled']) {
             if ($source) {
-                $source->update([
+                $this->safeSourceUpdate($source, [
                     'last_error_at' => now('UTC'),
                     'last_error_message' => $effective['reason'],
                     'health' => 'degraded',
@@ -599,7 +609,7 @@ class DataSourceRegistryService
 
         if (! $fetch['success'] || empty($fetch['data']['bars'])) {
             if ($source) {
-                $source->update([
+                $this->safeSourceUpdate($source, [
                     'last_error_at' => now('UTC'),
                     'last_error_message' => $fetch['message'] ?? 'Gagal mengambil histori.',
                     'health' => 'degraded',
@@ -655,7 +665,7 @@ class DataSourceRegistryService
         }
 
         if ($source) {
-            $source->update([
+            $this->safeSourceUpdate($source, [
                 'last_success_at' => now('UTC'),
                 'last_error_at' => null,
                 'last_error_message' => null,

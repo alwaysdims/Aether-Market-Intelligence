@@ -154,7 +154,7 @@ class AiConclusionPresenterTest extends TestCase
         // 1. BBCA without inference for this bar
         $bbcaNoSig = AiConclusionPresenter::present('BBCA', null, null, $obs, null, collect(), collect(), collect(), null);
         $this->assertFalse($bbcaNoSig['section_d']['is_constituent']);
-        $this->assertSame('NON_UNIVERSE_INSTRUMENT', $bbcaNoSig['section_d']['validation_badge']);
+        $this->assertSame('RESEARCH_PILOT_ONLY', $bbcaNoSig['section_d']['validation_badge']);
         $this->assertSame('NO_ACTIVE_INFERENCE_FOR_BAR', $bbcaNoSig['section_d']['signal_status']);
         $this->assertSame('N/A', $bbcaNoSig['section_d']['confidence']);
         $this->assertSame('N/A', $bbcaNoSig['section_d']['probability']);

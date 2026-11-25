@@ -472,6 +472,53 @@ class AiMarketAnalysisProvenanceTest extends TestCase
         $this->assertArrayHasKey('fallback_count', $metrics);
     }
 
+    public function test_consultation_adapter_preserves_model_and_telemetry_on_success_parse_failure_and_exception(): void
+    {
+        config([
+            'services.consultation_ai.endpoint' => 'http://router.test/v1',
+            'services.consultation_ai.model_id' => 'ag/gemini-test',
+            'services.consultation_ai.timeout' => 60,
+        ]);
+
+        $service = app(AiMarketAnalysisService::class);
+        $provider = new \ReflectionProperty($service, 'provider');
+        $provider->setValue($service, 'consultation_ai');
+        $model = new \ReflectionProperty($service, 'modelId');
+        $model->setValue($service, 'ag/gemini-test');
+        $endpoint = new \ReflectionProperty($service, 'endpoint');
+        $endpoint->setValue($service, 'http://router.test/v1/chat/completions');
+
+        $call = 0;
+        Http::fake(function () use (&$call) {
+            $call++;
+            if ($call === 1) {
+                return Http::response(json_encode(['model' => 'ag/gemini-test', 'choices' => [['message' => ['content' => 'ok']]]]), 200);
+            }
+            if ($call === 2) {
+                return Http::response(json_encode(['model' => 'ag/gemini-test', 'choices' => []]), 200);
+            }
+            throw new ConnectionException('transport failure');
+        });
+
+        $method = new \ReflectionMethod($service, 'generateGoogleContent');
+        $method->setAccessible(true);
+
+        $success = $method->invoke($service, 'system', 'user', false);
+        $this->assertSame('ag/gemini-test', $success['requested_model']);
+        $this->assertSame('ag/gemini-test', $success['returned_model']);
+        $this->assertArrayHasKey('telemetry', $success);
+        $this->assertSame('ag/gemini-test', $success['telemetry']['requested_model']);
+
+        $invalid = $method->invoke($service, 'system', 'user', false);
+        $this->assertSame('ag/gemini-test', $invalid['requested_model']);
+        $this->assertArrayHasKey('telemetry', $invalid);
+
+        $exception = $method->invoke($service, 'system', 'user', false);
+        $this->assertSame('ag/gemini-test', $exception['requested_model']);
+        $this->assertArrayHasKey('telemetry', $exception);
+        $this->assertSame('ag/gemini-test', $exception['telemetry']['requested_model']);
+    }
+
     /**
      * Skenario 13: Pencegahan inferensi live tanpa izin operasional.
      */

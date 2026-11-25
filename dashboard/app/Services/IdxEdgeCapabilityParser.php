@@ -127,6 +127,17 @@ class IdxEdgeCapabilityParser
     {
         $this->rejectError($payload);
         $items = $payload['items'] ?? null;
+        if (! is_array($items) && is_array($payload['reports'] ?? null)) {
+            $items = [];
+            foreach ($payload['reports'] as $period => $data) {
+                $items[] = is_array($data) && isset($data['data'])
+                    ? array_merge(['period' => (string) $period], $data)
+                    : ['period' => (string) $period, 'year' => (string) ($payload['year'] ?? 'UNKNOWN'), 'quarter' => 'UNKNOWN', 'fetched_at' => (string) ($payload['fetched_at'] ?? ''), 'data' => is_array($data) ? $data : []];
+            }
+        }
+        if (is_array($items) && ! isset($payload['count'])) {
+            $payload['count'] = count($items);
+        }
         if (! preg_match('/^[A-Z0-9^.-]{1,10}$/', (string) ($payload['stock_code'] ?? ''))
             || ! is_string($payload['report_type'] ?? null)
             || ! is_string($payload['period'] ?? null)

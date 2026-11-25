@@ -242,6 +242,62 @@ class TechnicalMetricsCalculationService
         );
     }
 
+    /** @return array<string, array<int, float|null>> */
+    public function calculateIndicatorSeries(array $closes): array
+    {
+        $n = count($closes);
+        $sma = static function (array $values, int $period): array {
+            return array_map(static function (int $index) use ($values, $period): ?float {
+                return $index + 1 >= $period ? round(array_sum(array_slice($values, $index + 1 - $period, $period)) / $period, 2) : null;
+            }, array_keys($values));
+        };
+        $rsi = array_fill(0, $n, null);
+        if ($n >= self::MIN_BARS_RSI14) {
+            $gains = $losses = [];
+            for ($i = 1; $i < $n; $i++) {
+                $delta = (float) $closes[$i] - (float) $closes[$i - 1];
+                $gains[] = max($delta, 0.0);
+                $losses[] = max(-$delta, 0.0);
+            }
+            $gain = array_sum(array_slice($gains, 0, 14)) / 14;
+            $loss = array_sum(array_slice($losses, 0, 14)) / 14;
+            $rsi[14] = $loss == 0 ? ($gain == 0 ? 50.0 : 100.0) : round(100 - (100 / (1 + ($gain / $loss))), 2);
+            for ($i = 14; $i < count($gains); $i++) {
+                $gain = (($gain * 13) + $gains[$i]) / 14;
+                $loss = (($loss * 13) + $losses[$i]) / 14;
+                $rsi[$i + 1] = $loss == 0 ? ($gain == 0 ? 50.0 : 100.0) : round(100 - (100 / (1 + ($gain / $loss))), 2);
+            }
+        }
+        $ema12 = $n >= 12 ? $this->calculateEma($closes, 12) : [];
+        $ema26 = $n >= 26 ? $this->calculateEma($closes, 26) : [];
+        $macd = array_fill(0, $n, null);
+        $signal = array_fill(0, $n, null);
+        if ($ema26 !== []) {
+            $values = [];
+            $offset = count($ema12) - count($ema26);
+            foreach ($ema26 as $i => $slow) {
+                $values[] = $ema12[$i + $offset] - $slow;
+            }
+            $signalValues = count($values) >= 9 ? $this->calculateEma($values, 9) : [];
+            foreach ($values as $i => $value) {
+                $index = $i + 25;
+                $macd[$index] = round($value, 2);
+                if (isset($signalValues[$i - 8])) {
+                    $signal[$index] = round($signalValues[$i - 8], 2);
+                }
+            }
+        }
+
+        return [
+            'sma_20' => $sma($closes, 20),
+            'sma_50' => $sma($closes, 50),
+            'sma_200' => $sma($closes, 200),
+            'rsi_14' => $rsi,
+            'macd' => $macd,
+            'macd_signal' => $signal,
+        ];
+    }
+
     protected function calculateEma(array $values, int $period): array
     {
         $k = 2.0 / ($period + 1.0);

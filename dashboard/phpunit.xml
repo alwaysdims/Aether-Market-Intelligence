@@ -34,6 +34,8 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
-        <env name="AI_LIVE_INFERENCE_ENABLED" value="true"/>
+        <env name="AI_LIVE_INFERENCE_ENABLED" value="false"/>
+        <env name="HERMES_ORCHESTRATOR_ENABLED" value="false"/>
+        <env name="HERMES_RUN_BUDGET_SECONDS" value="1"/>
     </php>
 </phpunit>

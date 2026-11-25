@@ -19,7 +19,7 @@ if not exist "%LAUNCHER%" (
 )
 
 echo =========================================================================
-echo  AETHER MARKET INTELLIGENCE - MODE PEMULIHAN HANYA-BACA
+echo  AETHER MARKET INTELLIGENCE - PROFIL PROD
 echo  URL: http://127.0.0.1:8000
 echo =========================================================================
 if "%~1"=="" (

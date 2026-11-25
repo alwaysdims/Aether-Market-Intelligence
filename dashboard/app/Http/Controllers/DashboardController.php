@@ -23,6 +23,7 @@ use App\Models\TelegramOutbox;
 use App\Models\UserWatchlist;
 use App\Presenters\AiConclusionPresenter;
 use App\Services\BeiCalendarService;
+use App\Services\BeiUniverseRegistry;
 use App\Services\CanonicalMarketReadService;
 use App\Services\DashboardResearchRequestBridgeService;
 use App\Services\DataFreshnessPolicyService;
@@ -32,14 +33,17 @@ use App\Services\IdxRegistryService;
 use App\Services\PostHorizonEvaluatorService;
 use App\Services\StockScreeningService;
 use App\Services\SystemHealthService;
+use App\Services\TechnicalMetricsCalculationService;
 use App\Services\TelegramTradingPlanService;
 use App\Services\UserPortfolioService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 class DashboardController extends Controller
@@ -55,7 +59,8 @@ class DashboardController extends Controller
         BeiCalendarService $calendar,
         PostHorizonEvaluatorService $evaluator,
         protected CanonicalMarketReadService $marketRead,
-        protected DashboardResearchRequestBridgeService $researchBridge
+        protected DashboardResearchRequestBridgeService $researchBridge,
+        protected TechnicalMetricsCalculationService $technicalEngine
     ) {
         $this->healthService = $healthService;
         $this->calendar = $calendar;
@@ -88,14 +93,21 @@ class DashboardController extends Controller
             ? 'EOD_FINAL'
             : ($latestEodObservation ? 'PROVISIONAL_POST_MARKET' : 'DATA_NOT_AVAILABLE');
         $isEodFinal = (bool) $latestEodObservation?->is_eod_final;
-        $evalMetrics = $this->evaluator->getMetricsSummary();
-        $recentEvals = PostHorizonEvaluation::latest('decision_date')->take(5)->get();
-        $lastNotification = NotificationLog::latest()->first();
-        $notificationStats = [
-            'sent' => NotificationLog::where('status', 'sent')->count(),
-            'failed' => NotificationLog::where('status', 'failed')->count(),
-            'pending' => NotificationLog::where('status', 'pending')->count(),
-        ];
+        try {
+            $evalMetrics = $this->evaluator->getMetricsSummary();
+            $recentEvals = PostHorizonEvaluation::latest('decision_date')->take(5)->get();
+            $lastNotification = NotificationLog::latest()->first();
+            $notificationStats = [
+                'sent' => NotificationLog::where('status', 'sent')->count(),
+                'failed' => NotificationLog::where('status', 'failed')->count(),
+                'pending' => NotificationLog::where('status', 'pending')->count(),
+            ];
+        } catch (\Throwable) {
+            $evalMetrics = [];
+            $recentEvals = collect();
+            $lastNotification = null;
+            $notificationStats = ['sent' => null, 'failed' => null, 'pending' => null];
+        }
 
         // Schedule slots according to PRD v3: 08:30, 09:15, 12:15, 15:15, 20:00 (16:05 Ingestion)
         // Evaluasi status aktual berbasis tanggal hari ini, session/date, run_id, target chat_id, dan keterverifikasian pengiriman nyata
@@ -374,17 +386,40 @@ class DashboardController extends Controller
             ->take(10)
             ->get();
         // Optimize overview latestMarketByTicker to avoid full-table scans
-        $latestMarketByTicker = collect();
+        $latestMarketByTicker = $recentResearchRequests
+            ->pluck('ticker')
+            ->filter()
+            ->unique()
+            ->mapWithKeys(fn (string $ticker) => [$ticker => $this->marketRead->latest($ticker)]);
         $evidenceObservationIds = $recentResearchRequests->mapWithKeys(fn ($req) => [$req->id => $this->marketRead->observationForEvidence($req->evidenceSnapshot)?->id]);
+        $overviewReferences = $recentResearchRequests->map(function ($request) use ($latestMarketByTicker, $evidenceObservationIds) {
+            $features = $request->evidenceSnapshot?->features_snapshot ?? [];
+
+            return [
+                'ticker' => $request->ticker,
+                'reference_close' => $features['reference_close'] ?? null,
+                'latest' => $latestMarketByTicker->get($request->ticker),
+                'observation_id' => $evidenceObservationIds->get($request->id),
+            ];
+        });
         $expectedBarDate = $latestEodDate ?? $this->calendar->getPreviousTradingDay(now('Asia/Jakarta'))->toDateString();
         $marketStates = collect();
-        $portfolioMetrics = app(UserPortfolioService::class)->calculatePortfolioMetrics('5923895922');
-        $idxCoverage = Cache::remember('dashboard:overview:idx_coverage', 120, function () {
-            return app(IdxFinancialIngestionService::class)->getCoverageStats();
-        });
-        $idxRegistry = Cache::remember('dashboard:overview:idx_registry', 120, function () {
-            return app(IdxRegistryService::class)->getRegistrySummary();
-        });
+        try {
+            $portfolioMetrics = app(UserPortfolioService::class)->calculatePortfolioMetrics('5923895922');
+        } catch (\Throwable) {
+            $portfolioMetrics = [];
+        }
+        try {
+            $idxCoverage = Cache::remember('dashboard:overview:idx_coverage', 120, function () {
+                return app(IdxFinancialIngestionService::class)->getCoverageStats();
+            });
+            $idxRegistry = Cache::remember('dashboard:overview:idx_registry', 120, function () {
+                return app(IdxRegistryService::class)->getRegistrySummary();
+            });
+        } catch (\Throwable) {
+            $idxCoverage = [];
+            $idxRegistry = [];
+        }
 
         // Screening Protocol SWING_FILTER_V1 Summary (Cached 3 minutes for dashboard responsiveness)
         $screeningSummary = Cache::remember('dashboard:overview:screening_summary', 180, function () {
@@ -397,16 +432,20 @@ class DashboardController extends Controller
 
         // Live Real Counts (Cached 60s to prevent full-table sequence scans on each render)
         $counts = Cache::remember('dashboard:overview:counts', 60, function () {
-            return [
-                'secondary_candidates' => IdxCompanyRegistry::where('instrument_type', 'EQUITY')->count(),
-                'active_indices' => IdxCompanyRegistry::where('instrument_type', 'INDEX')->count(),
-                'eod_tickers' => MarketObservation::distinct('ticker')->count('ticker'),
-                'total_bars' => MarketObservation::count(),
-                'financial_tickers' => CompanyFundamental::distinct('ticker')->count('ticker'),
-                'gemini_narratives' => MarketAnalysis::count(),
-                'watchlist_count' => UserWatchlist::where('is_active', true)->count(),
-                'news_total' => NewsItem::count(),
-            ];
+            try {
+                return [
+                    'secondary_candidates' => IdxCompanyRegistry::where('instrument_type', 'EQUITY')->count(),
+                    'active_indices' => IdxCompanyRegistry::where('instrument_type', 'INDEX')->count(),
+                    'eod_tickers' => MarketObservation::distinct('ticker')->count('ticker'),
+                    'total_bars' => MarketObservation::count(),
+                    'financial_tickers' => CompanyFundamental::distinct('ticker')->count('ticker'),
+                    'gemini_narratives' => MarketAnalysis::count(),
+                    'watchlist_count' => UserWatchlist::where('is_active', true)->count(),
+                    'news_total' => NewsItem::count(),
+                ];
+            } catch (\Throwable) {
+                return array_fill_keys(['secondary_candidates', 'active_indices', 'eod_tickers', 'total_bars', 'financial_tickers', 'gemini_narratives', 'watchlist_count', 'news_total'], null);
+            }
         });
 
         $marketWidgets = [
@@ -450,6 +489,7 @@ class DashboardController extends Controller
             'shadowStats',
             'recentResearchRequests',
             'latestMarketByTicker',
+            'overviewReferences',
             'marketStates',
             'evidenceObservationIds',
             'portfolioMetrics',
@@ -473,94 +513,77 @@ class DashboardController extends Controller
     public function market(Request $request)
     {
         $search = strtoupper(trim((string) $request->input('search', '')));
-        $sector = trim((string) $request->input('sector', ''));
-        $type = $request->input('type', 'equity'); // 'equity' or 'index'
         $sort = $request->input('sort', 'ticker');
+        $type = 'equity';
         $direction = strtolower((string) $request->input('direction', 'asc')) === 'desc' ? 'desc' : 'asc';
 
-        $latestMarketObservation = MarketObservation::where('source', 'IDX Edge PRO')
-            ->where('validation_status', 'VALID')
-            ->orderByDesc('bar_date')
-            ->first();
-        $expectedBarDate = $latestMarketObservation?->bar_date?->toDateString()
-            ?? $this->calendar->getPreviousTradingDay(now('Asia/Jakarta'))->toDateString();
+        $expectedBarDate = $this->calendar->getPreviousTradingDay(now('Asia/Jakarta'))->toDateString();
         $marketRead = $this->marketRead;
-
-        // Sectors for dropdown
-        $sectors = IdxCompanyRegistry::whereNotNull('sector')
-            ->where('sector', '!=', '')
-            ->distinct()
-            ->orderBy('sector')
-            ->pluck('sector');
-
-        // Watchlist tickers
-        $watchlistTickers = UserWatchlist::where('is_active', true)->pluck('ticker')->toArray();
-
-        // Build Paginated Query from Registry
-        $query = IdxCompanyRegistry::query();
-
-        if ($type === 'index') {
-            $query->where('instrument_type', 'INDEX');
-        } else {
-            $query->where('instrument_type', 'EQUITY');
-        }
-
+        $sectors = collect();
+        $watchlistTickers = [];
+        $coverage = 'BEI_REGISTRY_DB_945';
+        $query = IdxCompanyRegistry::query()
+            ->where('instrument_type', 'EQUITY')
+            ->where('listing_board', 'BEI');
         if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->where('ticker', 'like', "%{$search}%")
+            $query->where(function ($builder) use ($search): void {
+                $builder->where('ticker', 'like', "%{$search}%")
                     ->orWhere('company_name', 'like', "%{$search}%");
             });
         }
-
-        if ($sector !== '') {
-            $query->where('sector', $sector);
+        $sortColumn = $sort === 'company_name' ? 'company_name' : 'ticker';
+        $companies = $query->orderBy($sortColumn, $direction)->paginate(25)->withQueryString();
+        if ($companies->isEmpty()) {
+            $dynamicRows = MarketObservation::query()
+                ->whereIn('validation_status', ['VALID', 'PROVISIONAL', 'CONFLICTED'])
+                ->where('source', 'IDX Edge PRO')
+                ->where('interval', '1d')
+                ->where('data_classification', 'PUBLIC_MARKET_EOD')
+                ->where('adjustment_mode', 'PROVIDER_BACK_ADJUSTED')
+                ->when($search !== '', fn ($builder) => $builder->where('ticker', $search))
+                ->orderByDesc('bar_date')->orderByDesc('id')->get()
+                ->unique('ticker')->values()
+                ->map(fn (MarketObservation $observation) => new IdxCompanyRegistry([
+                    'ticker' => $observation->ticker,
+                    'company_name' => app(BeiUniverseRegistry::class)->resolveInstrument($observation->ticker)['company_name'] ?? $observation->ticker,
+                    'listing_board' => 'BEI',
+                    'instrument_type' => 'EQUITY',
+                    'listing_status' => 'ACTIVE',
+                ]));
+            if ($dynamicRows->isNotEmpty()) {
+                $companies = new LengthAwarePaginator($dynamicRows, $dynamicRows->count(), 25, 1, ['path' => $request->url(), 'query' => $request->query()]);
+            }
+        }
+        $pageTickers = $companies->getCollection()->pluck('ticker')->toArray();
+        $canonicalPage = $marketRead->latestByTicker();
+        if ($canonicalPage->count() <= 10) {
+            foreach ($canonicalPage as $ticker => $observation) {
+                if (! in_array($ticker, $pageTickers, true)) {
+                    $pageTickers[] = $ticker;
+                    $companies->getCollection()->push(new IdxCompanyRegistry([
+                        'ticker' => $ticker,
+                        'company_name' => app(BeiUniverseRegistry::class)->resolveInstrument($ticker)['company_name'] ?? $ticker,
+                        'listing_board' => 'BEI',
+                        'instrument_type' => 'EQUITY',
+                        'listing_status' => 'ACTIVE',
+                    ]));
+                }
+            }
         }
 
-        // Filter: Watchlist only
-        if ($request->has('watchlist') && $request->get('watchlist') === '1') {
-            $query->whereIn('ticker', $watchlistTickers);
+        $batchPrices = app(IdxEdgeClient::class)->priceList($pageTickers);
+        $priceStocks = ($batchPrices['success'] ?? false) ? ($batchPrices['data']['stocks'] ?? []) : [];
+        $apiPrices = [];
+        foreach ($priceStocks as $ticker => $priceData) {
+            $apiPrices[$ticker] = ['success' => true, 'data' => $priceData];
         }
+        $pageObservations = collect($pageTickers)
+            ->mapWithKeys(fn (string $ticker) => [$ticker => $marketRead->latest($ticker)])
+            ->filter();
 
-        // Filter: Cakupan Data
-        $coverage = $request->input('coverage', '');
-        if ($coverage === 'PILOT') {
-            $pilotTickers = ['BBCA', 'BMRI', 'TLKM', 'ASII', 'UNVR', 'ICBP', 'ADRO', 'MDKA', 'KLBF', 'SMRA'];
-            $query->whereIn('ticker', $pilotTickers);
-        } elseif ($coverage === 'WITH_DATA') {
-            $tickersWithData = Cache::remember('market:tickers_with_data', 120, function () {
-                return MarketObservation::distinct()->pluck('ticker')->toArray();
-            });
-            $query->whereIn('ticker', $tickersWithData);
-        } elseif ($coverage === 'SECONDARY_ONLY') {
-            $tickersWithData = Cache::remember('market:tickers_with_data', 120, function () {
-                return MarketObservation::distinct()->pluck('ticker')->toArray();
-            });
-            $query->whereNotIn('ticker', $tickersWithData);
-        }
+        // Canonical observation controls status and historical reference. API quote stays separate.
 
-        if (in_array($sort, ['ticker', 'company_name', 'sector', 'listing_board'])) {
-            $query->orderBy($sort, $direction);
-        } else {
-            $query->orderBy('ticker', 'asc');
-        }
-
-        $companies = $query->paginate(25)->withQueryString();
-
-        // Fetch latest observations for these companies (Prefer nominal UNADJUSTED from IDX Edge)
-        $pageTickers = $companies->pluck('ticker')->toArray();
-        $pageObservations = MarketObservation::whereIn('ticker', $pageTickers)
-            ->whereIn('board_scope', ['RG', 'INDEX'])
-            ->whereIn('validation_status', ['VALID'])
-            ->where('source', 'IDX Edge PRO')
-            ->orderByDesc('bar_date')
-            ->orderByRaw("CASE WHEN adjustment_mode = 'UNADJUSTED' THEN 1 ELSE 2 END")
-            ->orderByDesc('id')
-            ->get()
-            ->unique('ticker')
-            ->keyBy('ticker');
-
-        // Freshness assessments & Price Changes (Batch previous observations to avoid 25 individual DB queries)
-        $freshnessService = app(DataFreshnessPolicyService::class);
+        // Current page snapshot comes from one IDX Edge batch API request. DB remains registry and historical data.
         $freshnessByTicker = [];
         $priceChangesByTicker = [];
         $sourceByTicker = [];
@@ -595,16 +618,15 @@ class DashboardController extends Controller
         }
 
         foreach ($pageTickers as $t) {
-            $freshnessByTicker[$t] = $freshnessService->assessFreshness($t, 'eod');
-            $obs = $pageObservations->get($t);
-            if ($obs) {
-                $prevObs = $prevObservations->get($t);
-                // If expected previous trading session is missing, do not silently fallback to older stale bars
-                $priceChangesByTicker[$t] = $this->marketRead->priceChanges($obs, $prevObs);
-            } else {
-                $priceChangesByTicker[$t] = $this->marketRead->priceChanges(null);
-            }
-            $sourceByTicker[$t] = $obs ? $obs->source : null;
+            $api = $apiPrices[$t] ?? [];
+            $data = ($api['success'] ?? false) ? ($api['data'] ?? []) : [];
+            $priceChangesByTicker[$t] = [
+                'is_previous_close_available' => isset($data['change'], $data['change_pct']),
+                'daily_change' => $data['change'] ?? null,
+                'daily_change_pct' => $data['change_pct'] ?? null,
+                'previous_bar_date' => $data['source_date'] ?? null,
+            ];
+            $sourceByTicker[$t] = ($api['success'] ?? false) ? 'IDX Edge PRO API' : null;
         }
 
         // Canonical IHSG Index for widget
@@ -636,9 +658,9 @@ class DashboardController extends Controller
             'sectors',
             'watchlistTickers',
             'priceChangesByTicker',
+            'apiPrices',
             'ihsgData',
             'search',
-            'sector',
             'type',
             'sort',
             'direction',
@@ -656,21 +678,44 @@ class DashboardController extends Controller
         $tab = $request->query('tab', 'summary');
         $isAjaxTab = $request->ajax() || $request->header('X-Tab-Request') === '1';
 
-        // Company Registry Data
+        // Company identity comes from DB registry first, then IDX Edge search for newly listed instruments.
         $company = IdxCompanyRegistry::where('ticker', $ticker)->first();
+        if (! $company) {
+            $searchResult = app(IdxEdgeClient::class)->search($ticker);
+            $providerCompany = collect($searchResult['data']['items'] ?? [])->firstWhere('stock_code', $ticker);
+            if ($providerCompany) {
+                $company = new IdxCompanyRegistry([
+                    'ticker' => $ticker,
+                    'company_name' => $providerCompany['stock_name'] ?? $ticker,
+                    'listing_board' => 'BEI',
+                    'instrument_type' => 'EQUITY',
+                    'listing_status' => 'ACTIVE',
+                ]);
+            }
+        }
 
         $ihsgChart = null;
         if ($ticker === 'IHSG' && in_array($tab, ['summary', 'technical'], true)) {
             $ihsgChart = app(IdxEdgeClient::class)->chartIhsg();
         }
         $insiderPage = max(1, (int) $request->query('insider_page', 1));
-        $insiders = in_array($tab, ['summary', 'insiders'], true)
+        $insiders = $tab === 'insiders'
             ? app(IdxEdgeClient::class)->insiders($ticker, $insiderPage, 10)
             : null;
 
-        // Canonical Latest Price & Observations
+        // Current price comes from IDX Edge API. DB remains for historical data.
         $latestObs = $this->marketRead->latest($ticker);
-        $priceChanges = $this->marketRead->priceChanges($latestObs);
+        $apiPrice = app(IdxEdgeClient::class)->price($ticker);
+        $apiPriceData = ($apiPrice['success'] ?? false) ? ($apiPrice['data'] ?? []) : [];
+        $priceChanges = [
+            'is_previous_close_available' => isset($apiPriceData['change'], $apiPriceData['change_pct']),
+            'daily_change' => $apiPriceData['change'] ?? null,
+            'daily_change_pct' => $apiPriceData['change_pct'] ?? null,
+            'previous_close' => isset($apiPriceData['last_price'], $apiPriceData['change']) ? $apiPriceData['last_price'] - $apiPriceData['change'] : null,
+            'previous_bar_date' => $apiPriceData['source_date'] ?? null,
+            'change_vs_open_pct' => null,
+        ];
+        $latestPrice = $apiPriceData['last_price'] ?? null;
         // Conditional Tab Data Loading: only execute heavy queries needed for the requested tab
         $needsRecentBars = in_array($tab, ['summary', 'technical']);
         $recentBars = $needsRecentBars ? $this->marketRead->recentHistory($ticker, 30) : collect();
@@ -692,10 +737,14 @@ class DashboardController extends Controller
             : null;
         $indicatorInputBars = $technical?->data_quality_flags['input_bars'] ?? $totalHistoryBars;
 
-        // Fundamental Records
-        $fundamentals = in_array($tab, ['summary', 'fundamental', 'ai_insight']) ? CompanyFundamental::where('ticker', $ticker)
-            ->orderByDesc('fiscal_year')
-            ->get() : collect();
+        // Fundamental Records. Missing read grant must not break ticker page.
+        try {
+            $fundamentals = in_array($tab, ['summary', 'fundamental', 'ai_insight']) ? CompanyFundamental::where('ticker', $ticker)
+                ->orderByDesc('fiscal_year')
+                ->get() : collect();
+        } catch (\Throwable) {
+            $fundamentals = collect();
+        }
 
         // Financial metrics reconciliation: separate reported EPS, implied weighted shares, and period-end shares
         $latestAnnualFund = $fundamentals->first();
@@ -729,26 +778,34 @@ class DashboardController extends Controller
             ->orderByDesc('created_at')
             ->paginate(10, ['*'], 'history_page') : collect();
 
-        // On-Demand & Telegram Research Requests for Ticker
-        $tickerResearchRequests = in_array($tab, ['summary', 'history']) ? ResearchRequest::where('ticker', $ticker)
-            ->with(['evidenceSnapshot', 'marketAnalysis'])
-            ->latest('id')
-            ->take(10)
-            ->get() : collect();
+        // Optional tables may be unavailable to production read role.
+        try {
+            $tickerResearchRequests = in_array($tab, ['summary', 'history']) ? ResearchRequest::where('ticker', $ticker)
+                ->with(['evidenceSnapshot', 'marketAnalysis'])->latest('id')->take(10)->get() : collect();
+        } catch (\Throwable) {
+            $tickerResearchRequests = collect();
+        }
 
-        // News Tagged to Ticker
-        $news = in_array($tab, ['summary', 'news', 'ai_insight']) ? NewsItem::where(function ($q) use ($ticker) {
-            $q->whereJsonContains('related_tickers', $ticker)
-                ->orWhere('title', 'like', "%{$ticker}%");
-        })->latest('published_at')->take(15)->get() : collect();
+        try {
+            $news = in_array($tab, ['summary', 'news', 'ai_insight']) ? NewsItem::where(function ($q) use ($ticker) {
+                $q->whereJsonContains('related_tickers', $ticker)->orWhere('title', 'like', "%{$ticker}%");
+            })->latest('published_at')->take(15)->get() : collect();
+        } catch (\Throwable) {
+            $news = collect();
+        }
 
-        // Prediction Signals & Evaluations
-        $signals = in_array($tab, ['summary', 'monitoring', 'ai_insight']) ? PredictionSignal::operational()->where('ticker', $ticker)
-            ->orderByDesc('decision_timestamp')
-            ->get() : collect();
+        try {
+            $signals = in_array($tab, ['summary', 'monitoring', 'ai_insight']) ? PredictionSignal::operational()->where('ticker', $ticker)
+                ->orderByDesc('decision_timestamp')->get() : collect();
+        } catch (\Throwable) {
+            $signals = collect();
+        }
 
-        // Watchlist Status
-        $inWatchlist = UserWatchlist::where('ticker', $ticker)->where('is_active', true)->exists();
+        try {
+            $inWatchlist = UserWatchlist::where('ticker', $ticker)->where('is_active', true)->exists();
+        } catch (\Throwable) {
+            $inWatchlist = false;
+        }
 
         // Data Freshness Assessment
         $freshness = app(DataFreshnessPolicyService::class)->assessFreshness($ticker, 'eod');
@@ -787,6 +844,7 @@ class DashboardController extends Controller
             'ticker',
             'company',
             'latestObs',
+            'latestPrice',
             'priceChanges',
             'totalHistoryBars',
             'chartDisplayBars',
@@ -904,6 +962,45 @@ class DashboardController extends Controller
     }
 
     /**
+     * Provider screener API snapshot.
+     */
+    public function screenerLatest(): JsonResponse
+    {
+        $result = app(IdxEdgeClient::class)->screenerLatest();
+
+        return response()->json($result, ($result['success'] ?? false) ? 200 : 503);
+    }
+
+    /**
+     * Provider screener snapshot.
+     */
+    public function screener(Request $request)
+    {
+        $bucket = trim((string) $request->query('bucket', ''));
+        $search = strtoupper(trim((string) $request->query('search', '')));
+        $result = app(IdxEdgeClient::class)->screenerLatest();
+        $snapshot = $result['data'] ?? $result;
+        $items = collect($snapshot['items'] ?? []);
+        $displayResult = array_merge($result, $snapshot);
+        if ($search !== '') {
+            $items = $items->filter(fn (array $item): bool => str_contains(strtoupper((string) ($item['ticker'] ?? $item['stock_code'] ?? '')), $search) || str_contains(strtoupper((string) ($item['name'] ?? $item['company_name'] ?? '')), $search));
+        }
+        if ($bucket !== '') {
+            $items = $items->filter(fn (array $item): bool => (string) ($item['category'] ?? $item['bucket'] ?? '') === $bucket);
+        }
+        $buckets = $items->map(fn (array $item): string => (string) ($item['category'] ?? $item['bucket'] ?? ''))->filter()->unique()->sort()->values();
+
+        return view('dashboard.screener', [
+            'result' => $displayResult,
+            'items' => $items->values(),
+            'buckets' => $buckets,
+            'search' => $search,
+            'bucket' => $bucket,
+            'brandConfig' => $this->getBrandConfig(),
+        ]);
+    }
+
+    /**
      * News & Events
      */
     public function news(Request $request)
@@ -934,6 +1031,7 @@ class DashboardController extends Controller
     {
         $ticker = strtoupper(trim((string) $request->query('ticker', '')));
         $companies = IdxCompanyRegistry::where('instrument_type', 'EQUITY')
+            ->where('listing_board', 'BEI')
             ->where('listing_status', 'ACTIVE')
             ->orderBy('ticker')
             ->get(['ticker', 'company_name']);
@@ -957,27 +1055,67 @@ class DashboardController extends Controller
     {
         $ticker = strtoupper(trim((string) $request->input('ticker', '')));
 
-        $runsQuery = AnalysisRun::with(['marketAnalyses.postHorizonEvaluations'])
-            ->latest('started_at');
-
-        $runs = $runsQuery->paginate(15, ['*'], 'runs_page')->withQueryString();
-
-        $evalMetrics = $this->evaluator->getMetricsSummary();
-
-        $evalQuery = PostHorizonEvaluation::with('marketAnalysis')
-            ->latest('decision_date');
-
-        if ($ticker !== '') {
-            $evalQuery->whereHas('marketAnalysis', function ($q) use ($ticker) {
-                $q->where('ticker', $ticker);
-            });
+        try {
+            $runsQuery = AnalysisRun::with('marketAnalyses')->latest('started_at');
+            $runs = $runsQuery->paginate(15, ['*'], 'runs_page')->withQueryString();
+        } catch (\Throwable $error) {
+            Log::warning('[HISTORY_RUNS_QUERY_FAILED]', [
+                'exception_class' => $error::class,
+                'message' => preg_replace('/(password|token|api[_ -]?key|authorization)\s*[:=]?\s*[^\s,;]+/i', '$1=[REDACTED]', $error->getMessage()),
+                'database' => config('database.connections.pgsql.database'),
+                'user' => config('database.connections.pgsql.username'),
+            ]);
+            $runs = new LengthAwarePaginator([], 0, 15, 1, ['path' => request()->url()]);
         }
 
-        $evaluations = $evalQuery->paginate(20, ['*'], 'eval_page')->withQueryString();
-        $tradingPlanRecap = TelegramTradingPlanService::getAuditRecap();
+        $evaluationReadStatus = 'READABLE';
+        try {
+            $evalMetrics = $this->evaluator->getMetricsSummary();
+        } catch (\Throwable $error) {
+            $evaluationReadStatus = 'UNREADABLE_OR_NOT_AVAILABLE';
+            Log::warning('[HISTORY_EVALUATION_READ_FAILED]', [
+                'exception_class' => $error::class,
+                'message' => preg_replace('/(password|token|api[_ -]?key|authorization)\s*[:=]?\s*[^\s,;]+/i', '$1=[REDACTED]', $error->getMessage()),
+            ]);
+            $evalMetrics = [
+                'total_registered' => null, 'total_pending' => null, 'accuracy_pct' => null,
+                'directional_count' => null, 'baseline_always_positive_pct' => null,
+                'correct_count' => null, 'incorrect_count' => null, 'neutral_count' => null,
+            ];
+        }
+
+        try {
+            $evalQuery = PostHorizonEvaluation::with('marketAnalysis')->latest('decision_date');
+            if ($ticker !== '') {
+                $evalQuery->whereHas('marketAnalysis', function ($q) use ($ticker) {
+                    $q->where('ticker', $ticker);
+                });
+            }
+            $evaluations = $evalQuery->paginate(20, ['*'], 'eval_page')->withQueryString();
+        } catch (\Throwable $error) {
+            $evaluationReadStatus = 'UNREADABLE_OR_NOT_AVAILABLE';
+            Log::warning('[HISTORY_EVALUATION_ROWS_READ_FAILED]', [
+                'exception_class' => $error::class,
+                'message' => preg_replace('/(password|token|api[_ -]?key|authorization)\s*[:=]?\s*[^\s,;]+/i', '$1=[REDACTED]', $error->getMessage()),
+            ]);
+            $evaluations = new LengthAwarePaginator([], 0, 20, 1, ['path' => request()->url()]);
+        }
+
+        try {
+            $tradingPlanRecap = TelegramTradingPlanService::getAuditRecap();
+        } catch (\Throwable) {
+            $tradingPlanRecap = [
+                'total_decided' => null, 'total_forward_delivered' => null, 'total_retrospective' => null,
+                'total_not_delivered' => null, 'forward_target_hit_rate_pct' => null, 'forward_matured_count' => null,
+                'waiting_for_trigger' => null, 'trigger_observed' => null, 'forward_target_hit' => null,
+                'forward_invalidated' => null, 'forward_ambiguous' => null, 'forward_expired_untriggered' => null,
+                'forward_expired_post_trigger' => null, 'forward_coverage_gap' => null,
+                'by_strategy' => ['SCALPING' => [], 'SWING' => [], 'BSJP' => []],
+            ];
+        }
         $brandConfig = $this->getBrandConfig();
 
-        return view('dashboard.history', compact('runs', 'evalMetrics', 'evaluations', 'tradingPlanRecap', 'ticker', 'brandConfig'));
+        return view('dashboard.history', compact('runs', 'evalMetrics', 'evaluations', 'evaluationReadStatus', 'tradingPlanRecap', 'ticker', 'brandConfig'));
     }
 
     /**
@@ -986,7 +1124,11 @@ class DashboardController extends Controller
     public function health()
     {
         $health = $this->healthService->checkAll();
-        $recentChecks = SystemHealthCheck::latest('checked_at')->take(30)->get();
+        try {
+            $recentChecks = SystemHealthCheck::latest('checked_at')->take(30)->get();
+        } catch (\Throwable) {
+            $recentChecks = collect();
+        }
         $nextRunTime = $this->calendar->getNextScheduledRunTime();
         $isTradingDay = $this->calendar->isTradingDay(now('Asia/Jakarta'));
         $brandConfig = $this->getBrandConfig();
@@ -1013,7 +1155,11 @@ class DashboardController extends Controller
     public function profile()
     {
         $brandConfig = $this->getBrandConfig();
-        $watchlist = UserWatchlist::where('is_active', true)->get();
+        try {
+            $watchlist = UserWatchlist::where('is_active', true)->get();
+        } catch (\Throwable) {
+            $watchlist = collect();
+        }
         $analyst = [
             'name' => $brandConfig['analyst_name'] ?? 'Aether Lead Analyst',
             'role' => $brandConfig['analyst_title'] ?? 'Chief Quantitative Strategist',
@@ -1188,6 +1334,8 @@ class DashboardController extends Controller
             ],
         ]);
 
+        $this->dispatchResearchWorker($requestId);
+
         return response()->json([
             'success' => true,
             'request_id' => $requestId,
@@ -1195,6 +1343,25 @@ class DashboardController extends Controller
             'status' => 'PENDING',
             'message' => "Permintaan riset asinkron untuk emiten {$ticker} ({$companyName}) telah tercatat dengan Request ID: {$requestId}.",
         ]);
+    }
+
+    protected function dispatchResearchWorker(string $requestId): void
+    {
+        if (app()->runningUnitTests()) {
+            return;
+        }
+
+        $php = PHP_BINARY ?: 'php';
+        $artisan = base_path('artisan');
+        $command = sprintf('"%s" "%s" aether:execute-research "%s" > NUL 2>&1', $php, $artisan, $requestId);
+
+        if (PHP_OS_FAMILY === 'Windows') {
+            @pclose(@popen('start "" /B '.$command, 'r'));
+
+            return;
+        }
+
+        @exec($command.' >/dev/null 2>&1 &');
     }
 
     public function researchBridgeAudit()
@@ -1264,6 +1431,14 @@ class DashboardController extends Controller
             'completion_scope' => data_get($research->research_metadata, 'completion_scope'),
             'verification_status' => data_get($research->research_metadata, 'verification_status'),
             'model_status' => data_get($research->research_metadata, 'ai_model') ?: data_get($research->marketAnalysis?->structured_output, 'model_status'),
+            'ai_provenance' => [
+                'requested_model' => data_get($research->research_metadata, 'ai_requested_model') ?: data_get($research->marketAnalysis?->structured_output, 'requested_model'),
+                'returned_model' => data_get($research->research_metadata, 'ai_returned_model') ?: data_get($research->marketAnalysis?->structured_output, 'returned_model'),
+                'latency_ms' => data_get($research->research_metadata, 'ai_latency_ms') ?? data_get($research->marketAnalysis?->structured_output, 'latency_ms'),
+                'fallback_reason' => data_get($research->research_metadata, 'ai_fallback_reason') ?: data_get($research->marketAnalysis?->structured_output, 'fallback_reason'),
+                'trading_plan_unavailability' => data_get($research->research_metadata, 'trading_plan_unavailability') ?: data_get($research->marketAnalysis?->structured_output, 'trading_plan_unavailability'),
+                'inference_telemetry' => data_get($research->research_metadata, 'inference_telemetry') ?: data_get($research->marketAnalysis?->structured_output, 'inference_telemetry'),
+            ],
             'result' => $research->marketAnalysis?->only(['id', 'model_name', 'market_regime_summary', 'validation_status', 'structured_output']),
             'evidence' => $research->evidenceSnapshot?->only(['id', 'snapshot_id', 'ticker', 'decision_date', 'data_hash', 'features_snapshot']),
         ]);
@@ -1366,13 +1541,14 @@ class DashboardController extends Controller
             '6M' => $today->copy()->subMonthsNoOverflow(6)->toDateString(),
             '1Y' => $today->copy()->subYearNoOverflow()->toDateString(),
         };
-        $provider = app(IdxEdgeClient::class)->history($ticker, 500, $modeAdjusted, $startDate, $endDate);
+        $indicatorStartDate = $today->copy()->subYears(2)->toDateString();
+        $provider = app(IdxEdgeClient::class)->history($ticker, 500, $modeAdjusted, $indicatorStartDate, $endDate);
         if (! ($provider['success'] ?? false)) {
             return response()->json($provider, 502);
         }
         $providerData = $provider['data'];
         usort($providerData['bars'], static fn (array $left, array $right): int => strcmp($left['date'], $right['date']));
-        $formattedBars = array_map(static fn (array $bar): array => [
+        $allFormattedBars = array_map(static fn (array $bar): array => [
             'date' => $bar['date'],
             'open' => $bar['open'],
             'high' => $bar['high'],
@@ -1380,7 +1556,24 @@ class DashboardController extends Controller
             'close' => $bar['close'],
             'volume' => $bar['volume'],
         ], $providerData['bars']);
-        $latestDate = $formattedBars !== [] ? end($formattedBars)['date'] : null;
+        $allCloses = array_map(static fn (array $bar): float => (float) $bar['close'], $allFormattedBars);
+        $indicatorValues = $this->technicalEngine->calculateIndicatorSeries($allCloses);
+        $formattedBars = array_values(array_filter($allFormattedBars, static fn (array $bar): bool => $bar['date'] >= $startDate));
+        $displayIndexes = [];
+        foreach ($allFormattedBars as $index => $bar) {
+            if ($bar['date'] >= $startDate) {
+                $displayIndexes[] = $index;
+            }
+        }
+        $latestDate = $allFormattedBars !== [] ? end($allFormattedBars)['date'] : null;
+        $pointSeries = static function (array $values, array $indexes, array $bars): array {
+            $series = [];
+            foreach ($indexes as $displayIndex => $sourceIndex) {
+                $series[] = ['date' => $bars[$displayIndex]['date'], 'value' => $values[$sourceIndex] ?? null];
+            }
+
+            return $series;
+        };
 
         return response()->json([
             'success' => true,
@@ -1397,7 +1590,29 @@ class DashboardController extends Controller
                 ? 'Data sesi terakhir '.$latestDate.'; bukan data hari ini.'
                 : 'Data daily provider untuk rentang '.$startDate.' sampai '.$endDate.'.',
             'bars' => $formattedBars,
-            'indicators' => [],
+            'indicators' => [
+                'sma_20' => $pointSeries($indicatorValues['sma_20'], $displayIndexes, $formattedBars),
+                'sma_50' => $pointSeries($indicatorValues['sma_50'], $displayIndexes, $formattedBars),
+                'sma_200' => $pointSeries($indicatorValues['sma_200'], $displayIndexes, $formattedBars),
+                'rsi_14' => $pointSeries($indicatorValues['rsi_14'], $displayIndexes, $formattedBars),
+                'macd' => $pointSeries($indicatorValues['macd'], $displayIndexes, $formattedBars),
+                'macd_signal' => $pointSeries($indicatorValues['macd_signal'], $displayIndexes, $formattedBars),
+            ],
+            'indicator_provenance' => [
+                'source' => 'IDX Edge API',
+                'timeframe' => 'daily',
+                'adjustment_mode' => $adjustmentMode,
+                'warmup_start_date' => $indicatorStartDate,
+                'input_bars' => count($allFormattedBars),
+                'display_bars' => count($formattedBars),
+                'indicator_end_date' => $latestDate,
+                'sufficiency' => [
+                    'sma_50' => count($allFormattedBars) >= TechnicalMetricsCalculationService::MIN_BARS_SMA50 ? 'SUFFICIENT' : 'DATA_INSUFFICIENT',
+                    'sma_200' => count($allFormattedBars) >= TechnicalMetricsCalculationService::MIN_BARS_SMA200 ? 'SUFFICIENT' : 'DATA_INSUFFICIENT',
+                    'rsi_14' => count($allFormattedBars) >= TechnicalMetricsCalculationService::MIN_BARS_RSI14 ? 'SUFFICIENT' : 'DATA_INSUFFICIENT',
+                    'macd' => count($allFormattedBars) >= TechnicalMetricsCalculationService::MIN_BARS_MACD ? 'SUFFICIENT' : 'DATA_INSUFFICIENT',
+                ],
+            ],
             'data_classification' => 'PROVIDER_SUPPLIED',
         ])->header('Cache-Control', 'private, no-cache');
 

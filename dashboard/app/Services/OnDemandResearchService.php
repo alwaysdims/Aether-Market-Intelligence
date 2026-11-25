@@ -376,19 +376,24 @@ class OnDemandResearchService
                 $metric,
                 data_get($metadata, 'refresh', []),
                 $broker,
-                $req->request_id
+                $req->request_id,
+                data_get($metadata, 'question')
             );
 
+            // generateOnDemandTickerExplanation already persists structured fallback on inference failure.
             if (! ($aiResult['success'] ?? false)) {
-                $aiResult = $this->aiService->buildOnDemandFallback(
-                    $ticker,
-                    $obs,
-                    $evidence,
-                    $metric,
-                    $aiResult['fallback_reason'] ?? 'Inferensi naratif tidak tersedia.',
-                    $req->request_id
-                );
+                throw new \RuntimeException((string) ($aiResult['fallback_reason'] ?? 'INFERENCE_UNAVAILABLE'));
             }
+
+            $metadata['ai_requested_model'] = $aiResult['requested_model'] ?? data_get($aiResult, 'structured_output.requested_model');
+            $metadata['ai_returned_model'] = $aiResult['returned_model'] ?? data_get($aiResult, 'structured_output.returned_model');
+            $metadata['ai_fallback_reason'] = $aiResult['fallback_reason'] ?? data_get($aiResult, 'structured_output.fallback_reason');
+            $metadata['trading_plan_unavailability'] = $aiResult['trading_plan_unavailability'] ?? data_get($aiResult, 'structured_output.trading_plan_unavailability');
+            $metadata['inference_telemetry'] = $aiResult['inference_telemetry'] ?? data_get($aiResult, 'structured_output.inference_telemetry');
+            $metadata['ai_latency_ms'] = $aiResult['latency_ms'] ?? data_get($aiResult, 'structured_output.inference_telemetry.duration_ms');
+            $metadata['ai_configuration_source'] = data_get($aiResult, 'structured_output.configuration_source')
+                ?? data_get($aiResult, 'structured_output.effective_configuration_source');
+            $req->update(['research_metadata' => $metadata]);
 
             $analysisId = $aiResult['analysis_id'] ?? null;
             $analysis = $analysisId ? MarketAnalysis::find($analysisId) : null;
@@ -423,7 +428,7 @@ class OnDemandResearchService
             $errorReason = null;
             if ($req->analysis_type === 'fundamental') {
                 $hasFund = CompanyFundamental::where('ticker', $ticker)->exists()
-                    || collect(data_get($metadata, 'refresh.bar_refresh.component_refresh.fundamental', []))
+                    || collect(data_get($metadata, 'refresh.bar.component_refresh.fundamental', data_get($metadata, 'refresh.bar_refresh.component_refresh.fundamental', [])))
                         ->contains(fn ($item) => is_array($item) && ($item['status'] ?? null) === 'REFRESHED_API');
                 if (! $hasFund) {
                     $finalStatus = 'partial';

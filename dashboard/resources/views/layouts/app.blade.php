@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="id">
-@php $readOnlyRecovery = getenv('DASHBOARD_CANDIDATE') === '1'; @endphp
+@php $readOnlyRecovery = false; @endphp
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -81,7 +81,13 @@
                 Market Monitor
             </a>
 
-            <!-- 3. Running Trade -->
+            <!-- 3. Screener -->
+            <a href="{{ route('dashboard.screener') }}" class="flex items-center px-3 py-2.5 rounded text-xs font-medium transition {{ request()->routeIs('dashboard.screener') ? 'bg-[#0A213D] text-[#E5C49B] border border-[#E5C49B]/30 font-semibold' : 'text-[#F5F1E8]/70 hover:text-[#F5F1E8] hover:bg-[#0A213D]/60' }}">
+                <svg class="w-4 h-4 mr-3 {{ request()->routeIs('dashboard.screener') ? 'text-[#E5C49B]' : 'text-[#F5F1E8]/40' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M7 12h10M10 18h4"></path></svg>
+                Screener
+            </a>
+
+            <!-- 4. Running Trade -->
             <a href="{{ route('dashboard.running_trade') }}" class="flex items-center px-3 py-2.5 rounded text-xs font-medium transition {{ request()->routeIs('dashboard.running_trade') ? 'bg-[#0A213D] text-[#E5C49B] border border-[#E5C49B]/30 font-semibold' : 'text-[#F5F1E8]/70 hover:text-[#F5F1E8] hover:bg-[#0A213D]/60' }}">
                 <svg class="w-4 h-4 mr-3 {{ request()->routeIs('dashboard.running_trade') ? 'text-[#E5C49B]' : 'text-[#F5F1E8]/40' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                 Running Trade
@@ -124,7 +130,7 @@
                 </div>
                 <div class="flex items-center justify-between text-[#F5F1E8]/50 text-[10px] pt-1 border-t border-[#F5F1E8]/5">
                     <span class="truncate">Hermes Engine</span>
-                    <span class="font-mono text-[#E5C49B]">{{ env('DASHBOARD_CANDIDATE') === '1' ? 'MODE PEMULIHAN' : 'PROFIL PROD' }}</span>
+                    <span class="font-mono text-[#E5C49B]">PROFIL PROD</span>
                 </div>
             </a>
         </div>
@@ -154,11 +160,6 @@
                 </form>
 
                 <!-- On-Demand Modal Trigger -->
-                @if($readOnlyRecovery)
-                    <span class="px-2.5 py-1.5 bg-amber-950/60 text-amber-300 border border-amber-500/30 rounded text-[10px] font-mono font-semibold">
-                        MODE PEMULIHAN: READER READ-ONLY
-                    </span>
-                @endif
                 <button onclick="openResearchModal()" class="px-2.5 py-1.5 bg-[#E5C49B] hover:bg-[#D6B284] text-[#05152B] rounded text-xs font-semibold tracking-wide transition flex items-center shadow-sm">
                     <svg class="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 013.86.517l-.318.158a6 6 0 013.86.517L6.05 15.21a2 2 0 011.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path></svg>
                     Riset AI
@@ -439,13 +440,16 @@
             }
         }
 
-        const savedResearchRequestId = localStorage.getItem('aether.research.request_id');
-        if (savedResearchRequestId) {
-            openResearchModal();
-            const savedArea = document.getElementById('modalResponseArea');
-            if (savedArea) {
-                savedArea.className = 'text-xs p-2.5 rounded bg-amber-950/60 border border-amber-500/30 text-amber-200';
-                pollResearchStatus(savedResearchRequestId, savedArea, 20);
+        // Research page owns query-param recovery and terminal polling.
+        if (window.location.pathname !== '/research') {
+            const savedResearchRequestId = localStorage.getItem('aether.research.request_id');
+            if (savedResearchRequestId) {
+                openResearchModal();
+                const savedArea = document.getElementById('modalResponseArea');
+                if (savedArea) {
+                    savedArea.className = 'text-xs p-2.5 rounded bg-amber-950/60 border border-amber-500/30 text-amber-200';
+                    pollResearchStatus(savedResearchRequestId, savedArea, 20);
+                }
             }
         }
 

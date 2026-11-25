@@ -11,6 +11,8 @@ use App\Models\MarketObservation;
 use App\Models\NewsItem;
 use App\Models\PredictionSignal;
 use App\Models\PromptTemplate;
+use GuzzleHttp\TransferStats;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -36,13 +38,19 @@ class AiMarketAnalysisService
 
     protected int $maxRetries;
 
+    protected ?string $configurationError = null;
+
     public function __construct()
     {
         $this->provider = app()->runningUnitTests() ? (string) config('services.dashboard_ai.provider', 'google') : 'consultation_ai';
         $this->googleBaseUrl = rtrim((string) config('services.dashboard_ai.base_url', 'https://generativelanguage.googleapis.com'), '/');
-        $this->modelId = app()->runningUnitTests()
-            ? (string) config('services.dashboard_ai.model', 'gemini-3.6-flash')
-            : (string) config('services.consultation_ai.model_id', 'gemini/gemini-3.6-flash');
+        $configuredModel = app()->runningUnitTests()
+            ? config('services.dashboard_ai.model', 'gemini-3.6-flash')
+            : config('services.consultation_ai.model_id');
+        $this->modelId = is_string($configuredModel) ? trim($configuredModel) : '';
+        if ($this->provider === 'consultation_ai' && $this->modelId === '') {
+            $this->configurationError = 'AI_MODEL_NOT_CONFIGURED';
+        }
         $this->endpoint = $this->provider === 'google'
             ? $this->googleBaseUrl.'/v1beta/models/'.rawurlencode($this->modelId).':generateContent'
             : rtrim((string) config('services.consultation_ai.endpoint'), '/').'/chat/completions';
@@ -172,7 +180,8 @@ class AiMarketAnalysisService
         ?CompanyAnalysisMetric $metric = null,
         array $componentSnapshot = [],
         ?array $brokerSnapshot = null,
-        ?string $researchRequestId = null
+        ?string $researchRequestId = null,
+        ?string $userQuestion = null
     ): array {
         $barDateStr = $obs->bar_date->format('Y-m-d');
         $fundamentalStatuses = data_get($componentSnapshot, 'bar.component_refresh.fundamental', data_get($componentSnapshot, 'bar_refresh.component_refresh.fundamental', data_get($componentSnapshot, 'fundamental', [])));
@@ -277,6 +286,9 @@ class AiMarketAnalysisService
                     'narrative' => $existing->market_regime_summary,
                     'analysis_id' => $existing->id,
                     'model' => $existing->model_name,
+                    'requested_model' => $existing->structured_output['requested_model'] ?? $this->modelId,
+                    'returned_model' => $existing->structured_output['returned_model'] ?? null,
+                    'inference_telemetry' => $existing->structured_output['inference_telemetry'] ?? null,
                     'cache_key' => $cacheKey,
                     'evidence_hash' => $evidenceHash,
                     'usage' => $existing->structured_output['usage'] ?? null,
@@ -327,6 +339,11 @@ class AiMarketAnalysisService
             ."   • SKENARIO DAMPAK & RISIKO: Potensi dinamika pasar tanpa rekomendasi beli/jual.\n"
             ."4. LIKUIDITAS: DILARANG menyimpulkan likuiditas tinggi hanya dari volume transaksi satu hari. Volume satu hari hanya menggambarkan aktivitas sesi terkait, bukan likuiditas konsisten tanpa data rata-rata multi-hari.\n"
             .'5. FORMAT: Tulis dalam bahasa Indonesia yang ringkas, profesional, tanpa karakter markdown literal (*) atau (_). Gunakan bullet point (•).';
+        $systemPrompt .= "\n6. TRADING PLAN KONDISIONAL: Selalu sertakan trading plan bersyarat, meskipun pengguna tidak menulis kata trading plan. Wajib pisahkan Fakta Provider, Entry Condition, Area Entry, Cut Loss, Target, Risk/Reward, Horizon, Invalidasi, dan Status Model. Jika model belum tervalidasi, labeli CONDITIONAL_DESCRIPTIVE dan jangan beri sinyal beli/jual pasti. Jangan membuat level yang tidak ada di evidence. Rencana long wajib memenuhi entry > stop loss > 0, target di atas entry, risiko maksimal 5% dari batas entry terburuk, horizon maksimal lima hari bursa, serta mulai berlaku dan expiry. Jika tidak lolos, tulis Belum ada rencana yang memenuhi batas risiko dan alasan spesifik.";
+        $systemPrompt .= "\n7. KEUANGAN: PER null hanya berarti PER tidak tersedia. Jangan menyebut rugi bersih tanpa akun laba/rugi, angka, dan periode. Bedakan laporan kuartal tunggal dan kumulatif/YTD. Gunakan mapping akun sesuai payload bank atau nonbank.";
+        if ($userQuestion !== null && trim($userQuestion) !== '') {
+            $systemPrompt .= "\n8. PERTANYAAN PENGGUNA: Jawab pertanyaan berikut secara eksplisit berdasarkan evidence: ".trim($userQuestion);
+        }
 
         $userPrompt = "Berikut adalah evidence faktual dari database untuk emiten {$ticker}:\n"
             ."• Emiten: {$ticker}\n"
@@ -366,7 +383,7 @@ class AiMarketAnalysisService
         }
 
         if ($hasFund && $metric) {
-            $peStr = $metric->pe_ratio !== null ? "{$metric->pe_ratio}x" : 'N/A (Rugi Bersih)';
+            $peStr = $metric->pe_ratio !== null ? "{$metric->pe_ratio}x" : 'N/A (PER tidak tersedia; laba/rugi belum disimpulkan)';
             $pbvStr = $metric->pbv_ratio !== null ? "{$metric->pbv_ratio}x" : 'N/A';
             $derStr = $metric->der_ratio !== null ? "{$metric->der_ratio}x" : 'N/A';
             $userPrompt .= "• Data Fundamental Terhitung: EPS Rp {$metric->eps} | BVPS Rp {$metric->bvps} | PER {$peStr} | PBV {$pbvStr} | DER {$derStr}\n"
@@ -468,27 +485,19 @@ class AiMarketAnalysisService
                     'narrative' => trim($content),
                     'analysis_id' => $analysis->id,
                     'model' => $this->modelId,
+                    'requested_model' => $result['requested_model'] ?? $this->modelId,
+                    'returned_model' => $result['returned_model'] ?? null,
+                    'inference_telemetry' => $result['telemetry'] ?? null,
                     'usage' => $usage,
                     'latency_ms' => $latencyMs,
                 ];
             }
         }
 
-        return [
-            'success' => false,
-            'fallback_reason' => $result['reason'],
-        ];
-    }
-
-    /** @return array<string, mixed> */
-    public function buildOnDemandFallback(
-        string $ticker,
-        MarketObservation $obs,
-        ?EvidenceSnapshot $evidence,
-        ?CompanyAnalysisMetric $metric,
-        string $reason,
-        ?string $researchRequestId = null
-    ): array {
+        $reason = (string) ($result['reason'] ?? 'INFERENCE_UNAVAILABLE');
+        $fallbackReason = $this->classifyTradingPlanUnavailability($reason);
+        $inferenceTelemetry = $result['telemetry'] ?? null;
+        $reasonText = $fallbackReason['display'];
         $narrative = implode("\n", [
             "FAKTA PASAR TERLAPOR — {$ticker}",
             '• Bar EOD: '.$obs->bar_date->toDateString().' via '.$obs->source,
@@ -496,9 +505,11 @@ class AiMarketAnalysisService
             '• Volume sesi: '.$obs->volume.' lembar',
             'INTERPRETASI MODEL & STATUS VALIDASI',
             '• Narasi LLM tidak tersedia. Analisis ini hanya fallback terstruktur berbasis evidence tersimpan.',
-            '• Model ML: MODEL_NOT_VALIDATED_FOR_INSTRUMENT; tidak ada sinyal beli/jual.',
-            'SKENARIO DAMPAK & RISIKO',
-            '• Risiko dan arah pasar tidak disimpulkan tanpa inferensi tervalidasi.',
+            '• Model ML: MODEL_NOT_VALIDATED_FOR_INSTRUMENT; status ini terpisah dari analisis deskriptif.',
+            'SKENARIO TRADING BERSYARAT',
+            '• Belum ada rencana yang memenuhi batas risiko: '.$reasonText,
+            '• Fallback timeout/gagal tidak membuktikan tidak ada rencana yang layak.',
+            '• Support/resistance tetap ditampilkan sebagai referensi historis, bukan otomatis cut loss.',
         ]);
         $run = AnalysisRun::create([
             'run_id' => 'ONDEMAND_FALLBACK_'.$ticker.'_'.now()->format('Ymd_Hisv'),
@@ -519,11 +530,13 @@ class AiMarketAnalysisService
             'structured_output' => [
                 'ticker' => $ticker,
                 'bar_date' => $obs->bar_date->toDateString(),
-                'evidence_snapshot_id' => $evidence?->id,
+                'evidence_snapshot_id' => $ev?->id,
                 'research_request_id' => $researchRequestId,
                 'fallback_reason' => $reason,
-                'requested_model' => $this->modelId,
+                'requested_model' => $this->modelId !== '' ? $this->modelId : null,
                 'returned_model' => null,
+                'trading_plan_unavailability' => $fallbackReason,
+                'inference_telemetry' => $inferenceTelemetry,
                 'configuration_source' => 'services.consultation_ai (CONSULTATION_MODEL_ID/CONSULTATION_AI_ENDPOINT/CONSULTATION_AI_API_KEY)',
                 'generated_narrative' => $narrative,
                 'model_status' => 'NOT_RUN',
@@ -541,15 +554,59 @@ class AiMarketAnalysisService
             'narrative' => $narrative,
             'analysis_id' => $analysis->id,
             'model' => 'STRUCTURED_FALLBACK',
+            'requested_model' => $this->modelId,
+            'returned_model' => null,
+            'fallback_reason' => $reason,
+            'trading_plan_unavailability' => $fallbackReason,
+            'inference_telemetry' => $inferenceTelemetry,
             'usage' => null,
-            'latency_ms' => 0,
+            'latency_ms' => is_array($inferenceTelemetry) ? ($inferenceTelemetry['duration_ms'] ?? null) : null,
+            'fallback_latency_ms' => 0,
         ];
+    }
+
+    /** @return array{code: string, display: string} */
+    protected function classifyTradingPlanUnavailability(string $reason): array
+    {
+        $normalized = strtoupper($reason);
+        if (str_contains($normalized, 'TIMEOUT') || str_contains($normalized, 'CONNECTION') || str_contains($normalized, 'HTTP')) {
+            return ['code' => 'INFERENCE_UNAVAILABLE', 'display' => 'inference timeout/gagal; analisis AI belum selesai'];
+        }
+        if (str_contains($normalized, 'INSUFFICIENT') || str_contains($normalized, 'NOT_ENOUGH') || str_contains($normalized, 'DATA')) {
+            return ['code' => 'DATA_INSUFFICIENT', 'display' => 'data tidak cukup; komponen pendukung belum lengkap'];
+        }
+        if (str_contains($normalized, 'RISK') || str_contains($normalized, 'VALIDATOR')) {
+            return ['code' => 'PLAN_REJECTED_RISK', 'display' => 'rencana dihasilkan tetapi ditolak validator karena risiko melebihi 5%'];
+        }
+        if (str_contains($normalized, 'NO_SETUP') || str_contains($normalized, 'NO SETUP')) {
+            return ['code' => 'AI_NO_SETUP', 'display' => 'AI menilai tidak ada setup yang memenuhi syarat'];
+        }
+
+        return ['code' => 'INFERENCE_UNAVAILABLE', 'display' => 'inference gagal; analisis AI belum selesai'];
     }
 
     /** @return array<string, mixed> */
     protected function generateGoogleContent(string $systemPrompt, string $userPrompt, bool $json): array
     {
         if ($this->provider === 'consultation_ai') {
+            $baseTelemetry = [
+                'requested_model' => $this->modelId !== '' ? $this->modelId : null,
+                'returned_model' => null,
+                'endpoint' => preg_replace('/:\/\/[^\/]+/', '://[LOCAL]', $this->endpoint),
+                'configuration_source' => 'services.consultation_ai',
+            ];
+            if ($this->configurationError !== null) {
+                return [
+                    'ok' => false,
+                    'validation_status' => 'blocked',
+                    'reason' => $this->configurationError,
+                    'requested_model' => null,
+                    'returned_model' => null,
+                    'usage' => null,
+                    'finish_reason' => null,
+                    'telemetry' => $baseTelemetry,
+                ];
+            }
             $payload = [
                 'model' => $this->modelId,
                 'messages' => [
@@ -560,12 +617,46 @@ class AiMarketAnalysisService
                 'temperature' => 0.2,
                 'stream' => false,
             ];
+            $correlationId = 'AI_'.gmdate('Ymd_His').'_'.bin2hex(random_bytes(4));
+            $startedAt = microtime(true);
+            $requestBytes = strlen((string) json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+            $inputChars = mb_strlen((string) ($systemPrompt.$userPrompt));
+            $deadlineAt = $startedAt + $this->timeout;
+            $timing = ['connect_ms' => null, 'first_byte_ms' => null, 'total_ms' => null];
             try {
-                $request = Http::timeout($this->timeout)->acceptJson()->asJson();
+                $request = Http::timeout($this->timeout)
+                    ->withOptions(['on_stats' => function (TransferStats $stats) use (&$timing, $startedAt): void {
+                        $timing['total_ms'] = (int) round((microtime(true) - $startedAt) * 1000);
+                        $handlerStats = $stats->getHandlerStats();
+                        $timing['connect_ms'] = isset($handlerStats['connect_time']) ? (int) round($handlerStats['connect_time'] * 1000) : null;
+                        $timing['first_byte_ms'] = isset($handlerStats['starttransfer_time']) ? (int) round($handlerStats['starttransfer_time'] * 1000) : null;
+                    }])
+                    ->acceptJson()
+                    ->asJson()
+                    ->withHeaders(['X-Aether-Correlation-ID' => $correlationId]);
                 if ($this->apiKey !== '') {
                     $request = $request->withToken($this->apiKey);
                 }
                 $response = $request->post($this->endpoint, $payload);
+                $transport = [
+                    'correlation_id' => $correlationId,
+                    'started_at_utc' => gmdate('c', (int) $startedAt),
+                    'deadline_at_utc' => gmdate('c', (int) $deadlineAt),
+                    'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+                    'http_status' => $response->status(),
+                    'curl_errno' => 'NOT_AVAILABLE_HTTP_CLIENT',
+                    'curl_error' => null,
+                    'connect_ms' => $timing['connect_ms'],
+                    'first_byte_ms' => $timing['first_byte_ms'],
+                    'total_ms' => $timing['total_ms'],
+                    'request_bytes' => $requestBytes,
+                    'input_chars' => $inputChars,
+                    'output_bytes' => $response->body() !== '' ? strlen($response->body()) : 0,
+                    'usage' => $response->json('usage'),
+                    'requested_model' => $this->modelId,
+                    'returned_model' => $response->json('model'),
+                ];
+                Log::info('[AI_CONSULTATION_PROBE]', $transport);
                 if (! $response->successful()) {
                     $status = $response->status();
                     $reason = match (true) {
@@ -586,20 +677,81 @@ class AiMarketAnalysisService
                         'validation_status' => 'fallback',
                         'reason' => $reason,
                         'provider_error' => $sanitizedMessage,
+                        'requested_model' => $this->modelId,
+                        'returned_model' => $transport['returned_model'],
                         'usage' => null,
                         'finish_reason' => null,
+                        'telemetry' => $transport,
                     ];
+
                 }
                 $text = $response->json('choices.0.message.content');
                 if (! is_string($text) || trim($text) === '') {
-                    return ['ok' => false, 'validation_status' => 'invalid_schema', 'reason' => 'INVALID_RESPONSE', 'usage' => $response->json('usage'), 'finish_reason' => null];
+                    return [
+                        'ok' => false,
+                        'validation_status' => 'invalid_schema',
+                        'reason' => 'INVALID_RESPONSE',
+                        'requested_model' => $this->modelId,
+                        'returned_model' => $transport['returned_model'],
+                        'usage' => $response->json('usage'),
+                        'finish_reason' => $response->json('choices.0.finish_reason'),
+                        'telemetry' => $transport,
+                    ];
                 }
 
-                return ['ok' => true, 'data' => null, 'text' => trim($text), 'usage' => $response->json('usage'), 'finish_reason' => $response->json('choices.0.finish_reason'), 'returned_model' => $response->json('model')];
+                return [
+                    'ok' => true,
+                    'data' => null,
+                    'text' => trim($text),
+                    'usage' => $response->json('usage'),
+                    'finish_reason' => $response->json('choices.0.finish_reason'),
+                    'requested_model' => $this->modelId,
+                    'returned_model' => $response->json('model'),
+                    'telemetry' => $transport,
+                ];
             } catch (\Throwable $e) {
-                Log::warning('AI router on-demand request failed: '.$e::class);
+                Log::warning('AI router on-demand request failed: '.$e::class, [
+                    'correlation_id' => $correlationId,
+                    'started_at_utc' => gmdate('c', (int) $startedAt),
+                    'deadline_at_utc' => gmdate('c', (int) $deadlineAt),
+                    'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+                    'exception_class' => get_class($e),
+                    'previous_exception_class' => $e->getPrevious() ? get_class($e->getPrevious()) : null,
+                    'http_status' => null,
+                    'curl_errno' => 'NOT_AVAILABLE_HTTP_CLIENT',
+                    'curl_error' => preg_replace('/(api[_ -]?key|authorization|bearer|token)\s*[:=]?\s*[^\s,;]+/i', '$1=[REDACTED]', $e->getMessage()),
+                    'connect_ms' => $timing['connect_ms'],
+                    'first_byte_ms' => $timing['first_byte_ms'],
+                    'total_ms' => $timing['total_ms'] ?? (int) round((microtime(true) - $startedAt) * 1000),
+                    'request_bytes' => $requestBytes,
+                    'input_chars' => $inputChars,
+                    'output_bytes' => 0,
+                    'usage' => null,
+                    'requested_model' => $this->modelId,
+                    'returned_model' => null,
+                ]);
+                $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
+                $reason = $e instanceof ConnectionException ? 'UPSTREAM_CONNECTION_FAILURE_UNCLASSIFIED' : 'UPSTREAM_EXCEPTION';
 
-                return ['ok' => false, 'validation_status' => 'fallback', 'reason' => 'TIMEOUT', 'provider_error' => null, 'usage' => null, 'finish_reason' => null];
+                return ['ok' => false, 'validation_status' => 'fallback', 'reason' => $reason, 'provider_error' => preg_replace('/(api[_ -]?key|authorization|bearer|token)\s*[:=]?\s*[^\s,;]+/i', '$1=[REDACTED]', $e->getMessage()), 'requested_model' => $this->modelId, 'returned_model' => null, 'usage' => null, 'finish_reason' => null, 'telemetry' => [
+                    'correlation_id' => $correlationId,
+                    'started_at_utc' => gmdate('c', (int) $startedAt),
+                    'deadline_at_utc' => gmdate('c', (int) $deadlineAt),
+                    'duration_ms' => $durationMs,
+                    'http_status' => null,
+                    'connect_ms' => $timing['connect_ms'],
+                    'first_byte_ms' => $timing['first_byte_ms'],
+                    'total_ms' => $timing['total_ms'] ?? $durationMs,
+                    'request_bytes' => $requestBytes,
+                    'input_chars' => $inputChars,
+                    'output_bytes' => 0,
+                    'usage' => null,
+                    'requested_model' => $this->modelId,
+                    'returned_model' => null,
+                    'exception_class' => get_class($e),
+                    'previous_exception_class' => $e->getPrevious() ? get_class($e->getPrevious()) : null,
+                    'error' => preg_replace('/(api[_ -]?key|authorization|bearer|token)\s*[:=]?\s*[^\s,;]+/i', '$1=[REDACTED]', $e->getMessage()),
+                ]];
             }
         }
         if ($this->provider !== 'google') {

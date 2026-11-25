@@ -31,19 +31,6 @@ class OnDemandDataCollectorService
         }
 
         $history = $this->idxEdgeClient->history($ticker, 500, false, null, null, true);
-        $adjustedHistory = $this->idxEdgeClient->history($ticker, 500, true, null, null, true);
-        $financialReports = [];
-        foreach (['INCOME_STATEMENT', 'BALANCE_SHEET', 'CASH_FLOW_REPORT'] as $reportType) {
-            $financialReports[$reportType] = $this->idxEdgeClient->financialStatements($ticker, $reportType, 'quarterly', 12);
-        }
-        $insiders = $this->idxEdgeClient->insiders($ticker, 1, 10);
-        $refreshComponents = [
-            'history_raw' => $this->componentRefreshMetadata($history, "/api/history/{$ticker}", ['frame' => 'daily', 'adjusted' => false, 'limit' => 500]),
-            'history_adjusted' => $this->componentRefreshMetadata($adjustedHistory, "/api/history/{$ticker}", ['frame' => 'daily', 'adjusted' => true, 'limit' => 500]),
-            'fundamental' => array_map(fn (array $result, string $reportType): array => $this->componentRefreshMetadata($result, "/api/financial-statements/{$ticker}", ['report_type' => $reportType, 'period' => 'quarterly', 'limit' => 12]), $financialReports, array_keys($financialReports)),
-            'insider' => $this->componentRefreshMetadata($insiders, "/api/insiders/{$ticker}", ['page' => 1, 'page_size' => 10]),
-            'news' => ['status' => 'NOT_FETCHED', 'date' => null, 'fallback_reason' => 'No authenticated provider news contract enabled'],
-        ];
         if (! ($history['success'] ?? false)) {
             return [
                 'success' => false,
@@ -58,11 +45,24 @@ class OnDemandDataCollectorService
         usort($bars, static fn (array $left, array $right): int => strcmp((string) $left['date'], (string) $right['date']));
         $bar = $bars[array_key_last($bars)];
         $broker = $this->brokerService->summaryForSevenCalendarDays($ticker, (string) $bar['date']);
+        $adjustedHistory = $this->idxEdgeClient->history($ticker, 500, true, null, null, true);
+        $financialReports = [];
+        foreach (['INCOME_STATEMENT', 'BALANCE_SHEET', 'CASH_FLOW_REPORT'] as $reportType) {
+            $financialReports[$reportType] = $this->idxEdgeClient->financialStatements($ticker, $reportType, 'annually', 5);
+        }
+        $insiders = $this->idxEdgeClient->allInsiders($ticker, 100);
         $fetchedAt = now('UTC');
+        $refreshComponents = [
+            'history_raw' => $this->componentRefreshMetadata($history, "/api/history/{$ticker}", ['frame' => 'daily', 'adjusted' => false, 'limit' => 500]),
+            'history_adjusted' => $this->componentRefreshMetadata($adjustedHistory, "/api/history/{$ticker}", ['frame' => 'daily', 'adjusted' => true, 'limit' => 500]),
+            'fundamental' => array_map(fn (array $result, string $reportType): array => $this->componentRefreshMetadata($result, "/api/financial-statements/{$ticker}", ['report_type' => $reportType, 'period' => 'annually', 'limit' => 5]), $financialReports, array_keys($financialReports)),
+            'insider' => $this->componentRefreshMetadata($insiders, "/api/insiders/{$ticker}", ['page' => 1, 'page_size' => 10]),
+            'news' => ['status' => 'NOT_FETCHED', 'date' => null, 'fallback_reason' => 'No authenticated provider news contract enabled'],
+        ];
         $refreshComponents['broker'] = $this->componentRefreshMetadata(
             $broker,
             "/api/broker-summary/{$ticker}",
-            ['flow' => 'all', 'start_date' => Carbon::parse($bar['date'])->subDays(6)->toDateString(), 'end_date' => $bar['date'], 'limit' => 50, 'net' => true]
+            ['flow' => 'all', 'start_date' => Carbon::parse($bar['date'])->subDays(6)->toDateString(), 'end_date' => $bar['date'], 'net' => true, 'broker_limit' => 50, 'level_limit' => 25, 'all_data' => false]
         );
         $refreshComponents['broker']['period'] = [
             'requested_start' => Carbon::parse($bar['date'])->subDays(6)->toDateString(),
@@ -71,8 +71,16 @@ class OnDemandDataCollectorService
             'provider_end' => data_get($broker, 'data.end_date'),
             'sessions_covered' => data_get($broker, 'data.sessions_covered') ?? data_get($broker, 'data.session_count'),
         ];
-        $refreshComponents['broker']['status'] = ($broker['success'] ?? false) ? 'REFRESHED_API' : 'FETCH_FAILED';
+        $refreshComponents['broker']['status'] = ($broker['success'] ?? false)
+            ? (empty(data_get($broker, 'data.brokers')) ? 'PROVIDER_EMPTY' : 'REFRESHED_API')
+            : 'FETCH_FAILED';
         $refreshComponents['broker']['empty'] = ($broker['success'] ?? false) && empty(data_get($broker, 'data.top_buyers')) && empty(data_get($broker, 'data.top_sellers'));
+        $brokerArchive = $this->archiveEndpointPayload($ticker, $bar['date'], false, $broker, $fetchedAt, 'broker_summary');
+        $refreshComponents['broker']['archive_path'] = $brokerArchive['path'];
+        $refreshComponents['broker']['archive_hash'] = $brokerArchive['hash'];
+        $insiderArchive = $this->archiveEndpointPayload($ticker, $bar['date'], false, $insiders, $fetchedAt, 'insiders');
+        $refreshComponents['insider']['archive_path'] = $insiderArchive['path'];
+        $refreshComponents['insider']['archive_hash'] = $insiderArchive['hash'];
         $rawArchive = $this->archiveEndpointPayload($ticker, $bar['date'], false, $history, $fetchedAt);
         $adjustedArchive = ($adjustedHistory['success'] ?? false)
             ? $this->archiveEndpointPayload($ticker, $bar['date'], true, $adjustedHistory, $fetchedAt)
@@ -342,11 +350,12 @@ class OnDemandDataCollectorService
     }
 
     /** @return array{path: string, hash: string} */
-    protected function archiveEndpointPayload(string $ticker, string $barDate, bool $adjusted, array $result, Carbon $fetchedAt): array
+    protected function archiveEndpointPayload(string $ticker, string $barDate, bool $adjusted, array $result, Carbon $fetchedAt, string $kind = 'history'): array
     {
         $payload = [
             'provider' => 'IDX_EDGE',
             'ticker' => $ticker,
+            'kind' => $kind,
             'adjusted' => $adjusted,
             'received_at' => $fetchedAt->toIso8601String(),
             'response' => $result['raw_response'] ?? null,
@@ -355,7 +364,7 @@ class OnDemandDataCollectorService
         $json = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         $hash = hash('sha256', $json);
         $mode = $adjusted ? 'adjusted' : 'raw';
-        $path = storage_path('app/raw_immutable/'.str_replace('-', '', $barDate).'/'.$ticker.'_history_'.$mode.'_'.$hash.'.json');
+        $path = storage_path('app/raw_immutable/'.str_replace('-', '', $barDate).'/'.$ticker.'_'.$kind.'_'.$mode.'_'.$hash.'.json');
         File::ensureDirectoryExists(dirname($path));
         if (! File::exists($path)) {
             File::put($path, $json);

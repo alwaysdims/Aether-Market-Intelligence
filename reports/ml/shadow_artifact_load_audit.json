@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "status": "READ_ONLY_ARTIFACT_LOAD",
+  "inference_run": false,
+  "publication": "DISABLED",
+  "contract_version": "EXP_SWING_CONTRACT_TARGETS_V1",
+  "feature_names": [
+    "ret_1",
+    "ret_3",
+    "ret_5",
+    "ema9_ratio",
+    "ema20_ratio",
+    "ema_spread",
+    "rsi14",
+    "atr14_ratio",
+    "rvol20",
+    "dist_support20",
+    "dist_resistance20",
+    "volatility20"
+  ],
+  "feature_schema_hash": "NOT_EMBEDDED_IN_PICKLE",
+  "artifacts": [
+    {"path": "quant-engine/models/contract_artifacts/tp_6_logistic_regression.pkl", "sha256": "c30f575b8f7212f5441403385f696e8bb78fe479a96235e3ab2a1665adc834a2", "load_status": "LOADED_READ_ONLY"},
+    {"path": "quant-engine/models/contract_artifacts/tp_6_hist_gradient_boosting.pkl", "sha256": "feba86f4b3897a02e364f1579a147a063bd2ffd9b9f33e241525c0f6c0b5755f", "load_status": "LOADED_READ_ONLY"},
+    {"path": "quant-engine/models/contract_artifacts/tp_15_logistic_regression.pkl", "sha256": "13207593e2e7e0416916f18bcbb339ff7a4045bede9adc69140223be3b2fc9d9", "load_status": "LOADED_READ_ONLY"},
+    {"path": "quant-engine/models/contract_artifacts/tp_15_hist_gradient_boosting.pkl", "sha256": "9c14968859d44c168e236a917ebbb001ada1a24ea58bd4c2437f7e6c76f0081a", "load_status": "LOADED_READ_ONLY"},
+    {"path": "quant-engine/models/contract_artifacts/tp_35_logistic_regression.pkl", "sha256": "1b2055c6357e776af252a8146d89abf1ca688ecb09eab8f03e78c5c55f9beac1", "load_status": "LOADED_READ_ONLY"},
+    {"path": "quant-engine/models/contract_artifacts/tp_35_hist_gradient_boosting.pkl", "sha256": "a2787d8c95990ece348d2dc709c34645c363975265e2bbf464fdee325da90ed4", "load_status": "LOADED_READ_ONLY"}
+  ],
+  "blockers": [
+    "current_bar_receipt_not_present",
+    "feature_schema_hash_not_embedded_in_pickle",
+    "untouched_forward_holdout_not_available"
+  ]
+}

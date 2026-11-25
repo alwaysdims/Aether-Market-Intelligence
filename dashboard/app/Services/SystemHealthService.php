@@ -57,7 +57,11 @@ class SystemHealthService
         }
 
         if (! config('services.dashboard_candidate.read_only_health', false)) {
-            SystemHealthCheck::create($result);
+            try {
+                SystemHealthCheck::create($result);
+            } catch (\Throwable) {
+                // Production read role may not have write grant for health audit.
+            }
         }
 
         return $result;
@@ -126,7 +130,11 @@ class SystemHealthService
         }
 
         if (! config('services.dashboard_candidate.read_only_health', false)) {
-            SystemHealthCheck::create($result);
+            try {
+                SystemHealthCheck::create($result);
+            } catch (\Throwable) {
+                $result['details']['persistence'] = 'UNAVAILABLE_PERMISSION_DENIED';
+            }
         }
 
         return $result;
@@ -214,7 +222,11 @@ class SystemHealthService
         ];
 
         if (! config('services.dashboard_candidate.read_only_health', false)) {
-            SystemHealthCheck::create($result);
+            try {
+                SystemHealthCheck::create($result);
+            } catch (\Throwable) {
+                // Production read role may not have write grant for health audit.
+            }
         }
 
         return $result;
@@ -252,7 +264,11 @@ class SystemHealthService
         ];
 
         if (! config('services.dashboard_candidate.read_only_health', false)) {
-            SystemHealthCheck::create($result);
+            try {
+                SystemHealthCheck::create($result);
+            } catch (\Throwable) {
+                // Production read role may not have write grant for health audit.
+            }
         }
 
         return $result;

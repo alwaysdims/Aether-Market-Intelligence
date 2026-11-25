@@ -66,18 +66,32 @@
         <x-card title="IHSG — Indeks Harga Saham Gabungan" subtitle="Harga indeks dan status pasar">
             @php $ihsg = $ihsgWidget['data'] ?? []; $fmt = fn ($value, $dec = 2) => is_numeric($value) ? number_format((float) $value, $dec, ',', '.') : 'N/A'; @endphp
             <div id="ihsgPriceWidget" data-endpoint="{{ url('/api/price/IHSG') }}" data-market-state="{{ $ihsg['market_state'] ?? 'UNKNOWN' }}">
-                <div id="ihsgLastPrice" class="text-3xl font-bold font-mono tabular-nums">{{ $fmt($ihsg['last_price'] ?? null) }}</div>
-                <div id="ihsgChange" class="mt-1 font-mono">{{ is_numeric($ihsg['change'] ?? null) ? (($ihsg['change'] >= 0 ? '+' : '') . $fmt($ihsg['change'])) : 'N/A' }} poin / {{ is_numeric($ihsg['change_pct'] ?? null) ? (($ihsg['change_pct'] >= 0 ? '+' : '') . $fmt($ihsg['change_pct']) . '%') : 'N/A' }}</div>
-                <dl class="mt-4 grid grid-cols-2 gap-3 text-xs">
-                    @foreach(['previous_close' => 'Prev close', 'open' => 'Open', 'high' => 'High', 'low' => 'Low'] as $key => $label)
-                    <div><dt class="text-[#F5F1E8]/50">{{ $label }}</dt><dd id="ihsg{{ str_replace('_', '', ucwords($key, '_')) }}" class="font-mono">{{ $fmt($ihsg[$key] ?? null) }}</dd></div>
-                    @endforeach
-                </dl>
-                <div class="mt-4 space-y-1 text-[10px] text-[#F5F1E8]/50">
-                    <p>Status: <span id="ihsgMarketStatus">{{ $ihsg['market_label'] ?? $ihsg['market_state'] ?? 'N/A' }}</span></p>
-                    <p>Data: <span id="ihsgDataTs">{{ $ihsg['data_ts'] ?? $ihsg['data_timestamp'] ?? ($ihsg['source_date'] ?? 'N/A') }}</span> WIB</p>
-                    <p>Diperbarui aplikasi: <span id="ihsgServedTs">{{ $ihsg['served_ts'] ?? $ihsgWidget['fetched_at'] ?? 'N/A' }}</span> WIB</p>
-                    <p id="ihsgConnectionStatus" class="text-emerald-300">Data tersambung</p>
+                <div class="grid grid-cols-2 items-start gap-4">
+                    <div class="min-w-0 break-words text-xs sm:text-sm">
+                        <div id="ihsgLastPrice" class="text-xl sm:text-3xl font-bold font-mono tabular-nums">{{ $fmt($ihsg['last_price'] ?? null) }}</div>
+                        <div id="ihsgChange" class="mt-1 font-mono">{{ is_numeric($ihsg['change'] ?? null) ? (($ihsg['change'] >= 0 ? '+' : '') . $fmt($ihsg['change'])) : 'N/A' }} poin / {{ is_numeric($ihsg['change_pct'] ?? null) ? (($ihsg['change_pct'] >= 0 ? '+' : '') . $fmt($ihsg['change_pct']) . '%') : 'N/A' }}</div>
+                    </div>
+                    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 border-l border-[#F5F1E8]/10 pl-4 text-xs min-w-0 break-words">
+                        @foreach(['previous_close' => 'Prev close', 'open' => 'Open', 'high' => 'High', 'low' => 'Low'] as $key => $label)
+                        <div><dt class="text-[#F5F1E8]/60">{{ $label }}</dt><dd id="ihsg{{ str_replace('_', '', ucwords($key, '_')) }}" class="mt-1 font-mono tabular-nums">{{ $fmt($ihsg[$key] ?? null) }}</dd></div>
+                        @endforeach
+                    </dl>
+                </div>
+                <div class="mt-4 rounded-lg border border-[#F5F1E8]/10 p-3 text-xs">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <p><span class="text-[#F5F1E8]/60">Status:</span> <span id="ihsgMarketStatus" class="font-medium">{{ $ihsg['market_label'] ?? $ihsg['market_state'] ?? 'N/A' }}</span></p>
+                        <p class="rounded border border-[#F5F1E8]/10 px-2 py-1 text-[10px]" role="status"><span id="ihsgConnectionStatus" class="text-emerald-300">Data tersambung</span></p>
+                    </div>
+                    <dl class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-[#F5F1E8]/10 pt-3">
+                        <div>
+                            <dt class="text-[#F5F1E8]/60">Data</dt>
+                            <dd class="mt-1 font-mono break-words"><span id="ihsgDataTs">{{ $ihsg['data_ts'] ?? $ihsg['data_timestamp'] ?? ($ihsg['source_date'] ?? 'N/A') }}</span> WIB</dd>
+                        </div>
+                        <div>
+                            <dt class="text-[#F5F1E8]/60">Diperbarui aplikasi</dt>
+                            <dd class="mt-1 font-mono break-words"><span id="ihsgServedTs">{{ $ihsg['served_ts'] ?? $ihsgWidget['fetched_at'] ?? 'N/A' }}</span> WIB</dd>
+                        </div>
+                    </dl>
                 </div>
                 <div class="mt-5 border-t border-[#F5F1E8]/10 pt-4">
                     <div class="flex items-center justify-between gap-2 mb-2">

@@ -358,7 +358,45 @@ Contoh respons gagal:
 
 Untuk reset: `{"type":"filter"}`. Pesan filter invalid tidak memutus koneksi.
 
-### 7.5 Contoh Python running trade
+### 7.5 Jam bursa dan rollover harian
+
+Provider mengirim stream dari satu koneksi backend:
+
+```text
+WSS: wss://stock.arjum.com/ws/running-trade
+Hari: Senin-Jumat
+Sesi 1: 09:00-12:00 WIB (Jumat sampai 11:30 WIB)
+Istirahat: 12:00-13:30 WIB (Jumat 11:30-13:30 WIB)
+Sesi 2: 13:30-15:50 WIB
+Pre-closing: sampai 16:00 WIB
+```
+
+Di luar jam aktif, koneksi boleh tetap terbuka. Tidak adanya frame `trade` atau `top5` bukan otomatis error. Baca `snapshot.market.status`: `open`, `break`, `closed`, atau `weekend`.
+
+Collector Aether memakai timezone `Asia/Jakarta` untuk `session_date`, rollover, heartbeat, dan tampilan timestamp. Collector tidak memakai timezone OS untuk tanggal sesi. Pada tanggal WIB baru, collector membuat counter dan agregat sesi baru; state sesi sebelumnya masuk `previous_session_archive` dan tidak dihitung ulang.
+
+Invarian harian:
+
+```text
+session_date = tanggal Asia/Jakarta saat collector mulai
+session_aggregates = sesi aktif saja
+recent_trades = snapshot/recent sesi aktif saja
+previous_session_archive = baca-saja untuk histori
+```
+
+### 7.6 Autentikasi, close code, dan reconnect
+
+Handshake wajib memakai header `X-API-Key` dari environment atau secret manager. Jangan tulis key ke source, log, dokumentasi, Telegram, atau output terminal.
+
+| Close code | Status | Tindakan |
+|---|---|---|
+| `4401` | API key invalid, expired, banned, atau inactive | Stop retry otomatis; periksa credential melalui secret manager |
+| `4403` | Paid user required | Tandai entitlement blocked; jangan membuka koneksi kedua |
+| `4408` | Connection superseded/takeover | Audit owner dan proses lain; jangan reconnect cepat sebelum owner tunggal terbukti |
+
+Untuk close sementara lain, gunakan exponential backoff `2s, 5s, 10s`, maksimum `30s`. Lock OS mencegah owner kedua. Reconnect bukan bukti data gap sudah pulih.
+
+### 7.7 Contoh Python running trade
 
 ```python
 import os

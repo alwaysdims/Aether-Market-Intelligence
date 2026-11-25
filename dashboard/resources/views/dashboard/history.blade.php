@@ -18,7 +18,7 @@
         </div>
 
         <span class="text-xs text-[#E5C49B] bg-[#0D2B4E] border border-[#E5C49B]/30 px-3 py-1.5 rounded font-mono">
-            Model per record &bull; Target konsultasi: gemini/gemini-3.6-flash &bull; consultation_ai
+            Model per record &bull; Target konsultasi: {{ config('services.consultation_ai.model_id') }} &bull; consultation_ai
         </span>
     </div>
 
@@ -29,7 +29,11 @@
                 Evaluasi Akurasi Post-Horizon (5 Hari Bursa BEI)
             </h3>
             <span class="text-xs font-mono text-[#E5C49B]">
-                {{ $evalMetrics['total_registered'] }} Prediksi Terlacak &bull; {{ $evalMetrics['total_pending'] }} Menunggu Jatuh Tempo
+                @if(($evaluationReadStatus ?? 'READABLE') !== 'READABLE')
+                    Status evaluasi: {{ $evaluationReadStatus }}
+                @else
+                    {{ $evalMetrics['total_registered'] }} Prediksi Terlacak &bull; {{ $evalMetrics['total_pending'] }} Menunggu Jatuh Tempo
+                @endif
             </span>
         </div>
 
@@ -62,7 +66,10 @@
 
         <!-- Recent Post-Horizon Evaluations Table -->
         <div class="overflow-x-auto pt-2">
-            <table class="w-full text-left text-xs text-[#F5F1E8]">
+        @if(($evaluationReadStatus ?? 'READABLE') !== 'READABLE')
+            <p class="mb-2 text-[10px] font-mono text-amber-300">Status evaluasi: {{ $evaluationReadStatus }}. Data evaluasi tidak dipakai untuk mengosongkan History utama.</p>
+        @endif
+        <table class="w-full text-left text-xs text-[#F5F1E8]">
                 <thead class="bg-[#071C35] text-[#F5F1E8]/50 uppercase tracking-wider font-mono text-[10px] border-b border-[#F5F1E8]/10">
                     <tr>
                         <th class="px-3 py-2.5">Ticker</th>
@@ -236,12 +243,7 @@
                                 </div>
                                 <p class="text-xs text-[#F5F1E8]/80 leading-relaxed">{{ $analysis->market_regime_summary }}</p>
 
-                                @if($analysis->structured_output)
-                                    <details class="text-[11px] text-[#F5F1E8]/50 pt-1">
-                                        <summary class="cursor-pointer hover:text-[#E5C49B] font-mono">Lihat Output Terstruktur (JSON)</summary>
-                                        <pre class="mt-2 bg-[#05152B] p-3 rounded border border-[#F5F1E8]/10 text-[#F5F1E8]/80 overflow-x-auto font-mono text-[10px]">{{ json_encode($analysis->structured_output, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) }}</pre>
-                                    </details>
-                                @endif
+                                <span class="text-[10px] text-[#F5F1E8]/40 font-mono">Evidence dan output terstruktur tersimpan. JSON mentah disembunyikan.</span>
                             </div>
                         @endforeach
                     </div>

@@ -1,0 +1,107 @@
+{
+  "manifest_version": "AETHER_IDX_EDGE_MULTI_TICKER_V1",
+  "status": "RESEARCH_ONLY",
+  "production_publication": "DISABLED",
+  "cohort": {
+    "tickers": [
+      "ARTO",
+      "ASII",
+      "BBCA",
+      "BBNI",
+      "BBRI",
+      "BMRI",
+      "MAPI",
+      "MEDC",
+      "SMRA",
+      "TLKM"
+    ],
+    "selection_rule": "10-ticker local dataset with shared feature schema"
+  },
+  "dataset": {
+    "path": "ml_research/datasets/idx_top10_features_v1.csv",
+    "sha256": "52410a57f22633908ba0e07356daf4ff04c32a6eab907a838af285496ab03806",
+    "rows": 13586,
+    "train": 7030,
+    "validation": 2319,
+    "test": 4237
+  },
+  "feature_order": [
+    "ret_1",
+    "ret_3",
+    "ret_5",
+    "ema9_ratio",
+    "ema20_ratio",
+    "ema_spread",
+    "rsi14",
+    "atr14_ratio",
+    "rvol20",
+    "dist_support20",
+    "dist_resistance20",
+    "volatility20"
+  ],
+  "schema_sha256": "861af9436b987109094aa169201976d64497e0a17156b2011862d67a1e84c174",
+  "artifact_path": "models/idx_edge_multi_ticker_v1/pooled_logistic_regression.pkl",
+  "artifact_sha256": "47081be3f2a22caa279c07add36c7d0c9025097d29875e74213305c0a299b866",
+  "model_name": "LOGISTIC_REGRESSION_POOLED",
+  "model_version": "MULTI_TICKER_V1",
+  "threshold_validation": 0.7,
+  "threshold_origin": "FROZEN_PREDECLARED_RESEARCH_POLICY",
+  "preprocessing_contract": {
+    "status": "FROZEN_TRAIN_ONLY",
+    "median": [
+      0.0,
+      0.0,
+      0.0,
+      0.0003047936690802,
+      0.0028488255910266,
+      0.00214300353588815,
+      51.37308623818591,
+      0.0278497148087519,
+      0.8749635158571496,
+      0.0566813474010259,
+      0.05148742654782065,
+      0.01920004185294375
+    ],
+    "scaler_mean": [
+      0.0007870901016268331,
+      0.0022021054632179278,
+      0.0035997233987922323,
+      0.000604307125411427,
+      0.0012264531139182936,
+      0.0017322714503286,
+      51.39732058155167,
+      0.03305177704675876,
+      1.0156648787505569,
+      0.0739031803061386,
+      0.07629568123773699,
+      0.022102191779361253
+    ],
+    "scaler_scale": [
+      0.024688311913553675,
+      0.04140638175149486,
+      0.05279886739085572,
+      0.031391024902733516,
+      0.05102885531069563,
+      0.024886734442309436,
+      11.3600147919363,
+      0.014844970039964381,
+      0.6106337302149443,
+      0.06627720722202338,
+      0.07987073517028004,
+      0.011365995676550096
+    ]
+  },
+  "validation_metrics": {
+    "balanced_accuracy": 0.4996580201196294,
+    "precision_selected": 0.3333333333333333,
+    "recall_selected": 0.0009276437847866419,
+    "selected_count": 3
+  },
+  "test_metrics_exposed": {
+    "balanced_accuracy": 0.5014367298569664,
+    "precision_selected": 0.6,
+    "recall_selected": 0.0063025210084033615,
+    "selected_count": 20
+  },
+  "contract_version": "IDX_EDGE_MULTI_TICKER_V1_EOD_5D_RESEARCH"
+}

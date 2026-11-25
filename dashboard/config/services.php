@@ -37,10 +37,10 @@ return [
 
     'consultation_ai' => [
         'endpoint' => env('CONSULTATION_AI_ENDPOINT', env('AI_ROUTER_ENDPOINT', 'http://127.0.0.1:20128/v1')),
-        'model_id' => env('CONSULTATION_MODEL_ID', 'gemini/gemini-3.6-flash'),
+        'model_id' => env('CONSULTATION_MODEL_ID', env('AI_MODEL_ID', 'ag/gemini-3.8-flash-high')),
         'api_key' => env('CONSULTATION_AI_API_KEY', env('AI_API_KEY', '')),
         'protocol' => env('CONSULTATION_AI_PROTOCOL', 'openai_chat_completions'),
-        'timeout' => (int) env('CONSULTATION_AI_TIMEOUT', env('AI_ROUTER_TIMEOUT', 25)),
+        'timeout' => (int) env('CONSULTATION_AI_TIMEOUT', env('AI_ROUTER_TIMEOUT', 60)),
         'max_retries' => (int) env('CONSULTATION_AI_MAX_RETRIES', 1),
         'configuration_source' => 'services.consultation_ai (CONSULTATION_MODEL_ID/CONSULTATION_AI_ENDPOINT/CONSULTATION_AI_API_KEY)',
     ],
@@ -85,7 +85,7 @@ return [
         'cache_ttl_seconds' => (int) env('IDX_EDGE_CACHE_TTL_SECONDS', 30),
         'endpoints' => [
             'history' => (bool) env('IDX_EDGE_HISTORY_ENABLED', true),
-            'price' => (bool) env('IDX_EDGE_PRICE_ENABLED', false),
+            'price' => (bool) env('IDX_EDGE_PRICE_ENABLED', true),
             'broker' => (bool) env('IDX_EDGE_BROKER_ENABLED', true),
             'fundamental' => (bool) env('IDX_EDGE_FUNDAMENTAL_ENABLED', true),
             'search' => (bool) env('IDX_EDGE_SEARCH_ENABLED', true),

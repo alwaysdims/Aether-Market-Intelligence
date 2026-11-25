@@ -8,14 +8,14 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Jadwal Briefing Pagi Pasar BEI (Senin - Jumat 08:30 WIB)
-Schedule::command('hermes:morning-briefing')
+// Universal rule-based screening seluruh registry, satu trading plan pagi melalui outbox existing.
+Schedule::command('aether:screen-universal --live')
     ->weekdays()
     ->at('08:30')
     ->timezone('Asia/Jakarta')
     ->withoutOverlapping(10)
     ->runInBackground()
-    ->appendOutputTo(storage_path('logs/hermes_morning_briefing.log'));
+    ->appendOutputTo(storage_path('logs/aether_screen_universal.log'));
 
 // Jadwal Pembaruan Pasar Sesi 1 (Senin - Jumat 09:15 WIB)
 Schedule::command('hermes:market-update 09:15')
@@ -81,6 +81,24 @@ Schedule::command('hermes:evening-review')
     ->withoutOverlapping(10)
     ->runInBackground()
     ->appendOutputTo(storage_path('logs/hermes_evening_review.log'));
+
+// ML multi-ticker screening remains research-only until validation meets promotion gates.
+Schedule::command('aether:screen-ml-universe --dry-run')
+    ->weekdays()
+    ->at('16:10')
+    ->timezone('Asia/Jakarta')
+    ->withoutOverlapping(10)
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/aether_ml_universe.log'));
+
+// Legacy BBCA pilot remains separate and is not used for other tickers.
+Schedule::command('aether:screen-ml-bbca --live')
+    ->weekdays()
+    ->at('16:15')
+    ->timezone('Asia/Jakarta')
+    ->withoutOverlapping(10)
+    ->runInBackground()
+    ->appendOutputTo(storage_path('logs/aether_ml_bbca.log'));
 
 // Broker/fundamental provider writes stay under guarded writer ownership.
 // EOD/broker/fundamental ingestion has no Laravel owner. Windows guarded EOD owns it.

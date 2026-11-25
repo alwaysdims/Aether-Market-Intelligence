@@ -153,6 +153,24 @@ class IdxEdgeCapabilityParserTest extends TestCase
         self::assertSame('UNVERIFIED', $result['board_scope']);
     }
 
+    public function test_financial_statement_accepts_keyed_reports_without_inventing_missing_values(): void
+    {
+        $result = (new IdxEdgeCapabilityParser)->parseFinancialStatements([
+            'stock_code' => 'BRIS',
+            'report_type' => 'INCOME_STATEMENT',
+            'period' => 'quarterly',
+            'reports' => [
+                'Q2 2026' => ['laba_rugi' => 1955610000000],
+                'Q1 2026' => ['laba_rugi' => 2200099000000],
+            ],
+        ]);
+
+        self::assertSame(2, $result['count']);
+        self::assertSame('Q2 2026', $result['items'][0]['period']);
+        self::assertSame(1955610000000, $result['items'][0]['data']['laba_rugi']);
+        self::assertArrayNotHasKey('aset', $result['items'][0]['data']);
+    }
+
     public function test_schema_drift_and_invalid_provider_error_fail_closed(): void
     {
         $parser = new IdxEdgeCapabilityParser;

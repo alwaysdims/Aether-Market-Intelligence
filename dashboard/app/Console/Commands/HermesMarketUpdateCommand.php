@@ -72,29 +72,11 @@ class HermesMarketUpdateCommand extends Command
                 ->unique('ticker');
         }
 
-        // Penanganan Khusus Slot 12:15 WIB (Laporan Jeda Sesi 1 Berbasis Data Pasar Reguler)
+        // Slot 12:15 mempertahankan kandidat EOD sebagai watchlist riset saat RG intraday belum terverifikasi.
         if ($slot === '12:15') {
-            $this->info('Mengevaluasi kelayakan data live Pasar Reguler (RG) untuk Sesi 1 (12:15 WIB)...');
-            $coverage = $middayService->evaluateLiveSession1Coverage();
-
-            if (! $coverage['is_rg_ready']) {
-                $this->warn('Data live RG belum memenuhi syarat. Menyusun Laporan Sesi 1 Belum Tersedia...');
-                $deterministicSynthesis = $middayService->synthesizeDeterministic($coverage, false);
-                $reportText = $middayService->buildSession1UnavailableReport(
-                    coverage: $coverage,
-                    sessionDate: $nowWib,
-                    prevTradingDay: $prevTradingDay,
-                    prevEodObservations: $observations,
-                    deterministicSynthesis: $deterministicSynthesis
-                );
-            } else {
-                $this->info('Data live RG tervalidasi. Menyusun Laporan Aktivitas Sesi 1...');
-                $prevEodMap = $observations->keyBy('ticker')->toArray();
-                $trades = $coverage['raw_state']['recent_trades'] ?? [];
-                $aggResult = $middayService->aggregateValidatedTrades($trades, $prevEodMap);
-                $deterministicSynthesis = $middayService->synthesizeDeterministic($aggResult, true);
-                $reportText = "📊 LAPORAN AKTIVITAS SESI 1 PASAR REGULER (12:15 WIB)\n".json_encode($aggResult, JSON_PRETTY_PRINT);
-            }
+            $this->info('Menyusun Watchlist Riset EOD Sesi 2 (12:15 WIB)...');
+            $planData = $tradingPlanService->generateMiddaySesi2Plan($nowWib);
+            $reportText = $tradingPlanService->renderTelegramTradingPlan($planData, $nowWib);
 
             if ($dryRun) {
                 $this->line($reportText);
@@ -103,14 +85,14 @@ class HermesMarketUpdateCommand extends Command
                 return Command::SUCCESS;
             }
 
-            $res = $middayService->publishMiddayReport($reportText, $nowWib, $slot, $dryRun);
-            if ($res['status'] === 'ALREADY_SENT') {
-                $this->info("Slot {$slot} hari ini sudah terkirim (Outbox #{$res['outbox_id']}, Msg ID #{$res['telegram_message_id']}). Menolak penyiaran ulang.");
+            $res = $tradingPlanService->publishPlanToOutbox($slot, $reportText, $nowWib, false, 45, $planData);
+            if ($res['status'] === 'EXPIRED_STALE_ALERT' || $res['status'] === 'ALREADY_SENT') {
+                $this->info("Slot {$slot} tidak disiarkan ulang: {$res['status']}.");
 
                 return Command::SUCCESS;
             }
 
-            $this->info("Laporan Sesi 1 slot {$slot} berhasil diantrekan (Outbox #{$res['outbox_id']}, Due At: {$res['due_at']}).");
+            $this->info("Watchlist Riset EOD slot {$slot} berhasil diantrekan (Outbox #{$res['outbox_id']}).");
 
             return Command::SUCCESS;
         }

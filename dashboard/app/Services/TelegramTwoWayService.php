@@ -620,7 +620,8 @@ class TelegramTwoWayService
                     ."• Finality            : {$finality}\n"
                     ."• AI on-demand       : {$aiMode}\n"
                     .'• Provider konsultasi : '.($routerConfigured ? 'terkonfigurasi; probe runtime terpisah' : 'belum terkonfigurasi')."\n"
-                    ."• Model ML            : TIDAK AKTIF; artefak produksi belum tersedia\n"
+                    ."• ML daily swing BBCA : AKTIF TERBATAS; artifact dan receipt hanya untuk BBCA\n"
+                    ."• ML intraday         : TIDAK DIJALANKAN; feed RG intraday belum terverifikasi\n"
                     ."• Gateway             : satu receiver; polling dan Aether handler wired\n"
                     ."• Worker / antrean    : consultation scheduler dan outbox terpisah; rincian di dashboard\n"
                     ."• Kegagalan tertunda  : provider quota/backoff dan outbox DELIVERY_UNKNOWN diaudit\n"
@@ -1299,11 +1300,11 @@ class TelegramTwoWayService
         $nowWib = Carbon::now('Asia/Jakarta')->format('d M Y, H:i').' WIB';
         $mode = preg_match('/\b(day\s*trad(?:e|ing)|intraday|harian|realtime|real-time)\b/i', $text)
             ? 'DAY_TRADE'
-            : (preg_match('/\b(investasi|invest|jangka panjang|fundamental)\b/i', $text) ? 'INVESTMENT' : 'SWING');
+            : (preg_match('/\b(investasi|invest|jangka panjang)\b/i', $text) ? 'INVESTMENT' : 'SWING');
         $provenance['analysis_mode'] = $mode;
 
         if ($mode === 'DAY_TRADE') {
-            return "ANALISIS INTRADAY / DAY TRADE TIDAK TERSEDIA\n"
+            return "INTRADAY_DATA_UNAVAILABLE — ANALISIS INTRADAY / DAY TRADE TIDAK TERSEDIA\n"
                 ."──────────────────────────────────────────\n"
                 ."• Status Data Intraday: QUARANTINED (Endpoint quote mencampur Pasar Negosiasi tanpa filter board)\n"
                 ."• Keterbatasan Teknis: Data tick, bid/ask spread, order book depth, dan running trade live RG belum didukung provider\n"
@@ -1362,6 +1363,20 @@ class TelegramTwoWayService
         // Query MarketObservation
         $marketRead = app(CanonicalMarketReadService::class);
         $latestObs = $marketRead->latest($ticker);
+        $conflictedObs = MarketObservation::query()
+            ->where('ticker', strtoupper(trim($ticker)))
+            ->where('source', 'IDX Edge PRO')
+            ->where('board_scope', 'RG')
+            ->where('interval', '1d')
+            ->where('data_classification', 'PUBLIC_MARKET_EOD')
+            ->where('adjustment_mode', 'PROVIDER_BACK_ADJUSTED')
+            ->where('validation_status', 'CONFLICTED')
+            ->orderByDesc('bar_date')
+            ->orderByDesc('id')
+            ->first();
+        if ($conflictedObs) {
+            $latestObs = $conflictedObs;
+        }
         $provenance['market_observation_id'] = $latestObs?->id;
         $provenance['market_state'] = $marketRead->state($latestObs);
         if ($latestObs && $latestObs->validation_status === 'CONFLICTED') {

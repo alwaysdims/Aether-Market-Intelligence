@@ -9,7 +9,9 @@ use App\Models\MarketSnapshot;
 use App\Models\NewsItem;
 use App\Models\PromptTemplate;
 use App\Services\HermesAdapterService;
+use App\Services\IdxEdgeClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 class DashboardTest extends TestCase
@@ -58,6 +60,55 @@ class DashboardTest extends TestCase
         $response->assertSee('Market Monitor');
     }
 
+    public function test_screener_page_renders_provider_rows_and_filters(): void
+    {
+        config(['services.idx_edge.endpoints.screener' => true]);
+        $this->mock(IdxEdgeClient::class, function ($mock): void {
+            $mock->shouldReceive('screenerLatest')->andReturn([
+                'success' => true,
+                'source' => 'provider',
+                'as_of_date' => '2026-11-16',
+                'items' => [
+                    ['ticker' => 'BBCA', 'stock_name' => 'Bank Central Asia Tbk.', 'bucket' => 'AKUMULASI', 'summary' => 'pattern', 'wr_event' => 65.1, 'potential' => 6, 'drawdown' => -2, 'note' => 'provider'],
+                    ['ticker' => 'ASII', 'stock_name' => 'Astra International Tbk.', 'bucket' => 'DISTRIBUSI', 'summary' => 'pattern', 'wr_event' => null, 'potential' => null, 'drawdown' => null, 'note' => 'provider'],
+                ],
+            ]);
+        });
+        Http::fake([
+            'https://stock.arjum.com/api/screener/latest*' => Http::response([
+                'date' => 'Senin, 16 November 2026',
+                'source' => 'provider',
+                'rows' => [
+                    ['stock_code' => 'BBCA', 'stock_name' => 'Bank Central Asia Tbk.', 'bucket' => 'AKUMULASI', 'summary' => 'pattern', 'wr_event' => 65.1, 'potential' => 6, 'drawdown' => -2, 'note' => 'provider'],
+                    ['stock_code' => 'ASII', 'stock_name' => 'Astra International Tbk.', 'bucket' => 'DISTRIBUSI', 'summary' => 'pattern', 'wr_event' => null, 'potential' => null, 'drawdown' => null, 'note' => 'provider'],
+                ],
+            ], 200),
+        ]);
+
+        $this->get('/screener?search=BBCA&bucket=AKUMULASI')
+            ->assertOk()
+            ->assertSee('BBCA')
+            ->assertDontSee('href="http://localhost:8000/market/ASII"')
+            ->assertSee('STATISTIK PROVIDER');
+    }
+
+    public function test_screener_api_returns_provider_snapshot(): void
+    {
+        config(['services.idx_edge.endpoints.screener' => true]);
+        $this->mock(IdxEdgeClient::class, function ($mock): void {
+            $mock->shouldReceive('screenerLatest')->once()->andReturn([
+                'success' => true,
+                'data' => ['as_of_date' => '2026-11-20', 'source' => 'screener_v5.py', 'count' => 0, 'items' => [], 'data_classification' => 'PROVIDER_SUPPLIED'],
+            ]);
+        });
+
+        $this->getJson('/api/screener/latest')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.as_of_date', '2026-11-20')
+            ->assertJsonPath('data.count', 0);
+    }
+
     /**
      * Test news page renders.
      */
@@ -97,27 +148,17 @@ class DashboardTest extends TestCase
         $this->assertEquals('healthy', $apiResp->json('database.status'));
     }
 
-    public function test_recovery_mode_renders_read_only_controls_without_writer_actions(): void
+    public function test_production_mode_exposes_research_controls(): void
     {
-        putenv('DASHBOARD_CANDIDATE=1');
-        $_ENV['DASHBOARD_CANDIDATE'] = '1';
-        $_SERVER['DASHBOARD_CANDIDATE'] = '1';
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('PROFIL PROD')
+            ->assertSee('Riset AI')
+            ->assertDontSee('MODE PEMULIHAN: READER READ-ONLY');
 
-        try {
-            $this->get('/')
-                ->assertOk()
-                ->assertSee('MODE PEMULIHAN: READER READ-ONLY')
-                ->assertSee('Jalankan Riset');
-
-            $this->assertTrue(true, 'Riset memakai writer bridge terbatas; reader tetap read-only.');
-
-            $this->get('/profile')
-                ->assertOk()
-                ->assertSee('Perubahan profil dan identitas dinonaktifkan selama mode pemulihan.');
-        } finally {
-            putenv('DASHBOARD_CANDIDATE');
-            unset($_ENV['DASHBOARD_CANDIDATE'], $_SERVER['DASHBOARD_CANDIDATE']);
-        }
+        $this->get('/profile')
+            ->assertOk()
+            ->assertDontSee('Perubahan profil dan identitas dinonaktifkan selama mode pemulihan.');
     }
 
     /**

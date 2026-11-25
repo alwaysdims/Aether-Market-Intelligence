@@ -27,6 +27,17 @@ class IdxProcessNarrativeQueueCommand extends Command
 
         $targetTickers = [];
         if ($specificTicker) {
+            $latestObs = MarketObservation::where('ticker', $specificTicker)->latest('bar_date')->first();
+            $barDateStr = $latestObs?->bar_date?->format('Y-m-d');
+            $cached = $barDateStr !== null && MarketAnalysis::whereJsonContains('structured_output->ticker', $specificTicker)
+                ->whereJsonContains('structured_output->bar_date', $barDateStr)
+                ->where('validation_status', 'valid_schema')
+                ->first();
+            if ($cached) {
+                $this->info("Sukses [CACHED]: {$specificTicker}");
+
+                return Command::SUCCESS;
+            }
             $targetTickers = [$specificTicker];
         } else {
             // 1. Prioritas A: Kandidat yang lolos screening SWING
